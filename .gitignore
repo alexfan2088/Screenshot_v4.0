@@ -1,0 +1,31 @@
+# 构建输出目录
+bin/
+obj/
+
+# Visual Studio 临时文件
+*.user
+*.suo
+*.cache
+*.log
+
+# 调试文件
+*.pdb
+*.exe
+*.dll
+
+# 临时文件
+temp_*.wav
+temp_*.mp3
+
+# 用户设置
+.vs/
+.vscode/
+
+# NuGet 包
+packages/
+
+# 工作目录（录音文件）
+D:\ScreenshotV3.0\
+C:\ScreenshotV3.0\
+
+

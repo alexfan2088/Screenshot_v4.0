@@ -1,0 +1,23 @@
+﻿<Window x:Class="Screenshot_v3_0.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Screenshot_v3.0" Height="240" Width="420">
+  <Grid Margin="16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <TextBlock Text="系统音频录制（WASAPI Loopback，无需虚拟声卡）"
+               FontWeight="Bold" Margin="0,0,0,12"/>
+
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+      <Button Content="开始录音" Width="120" Margin="0,0,12,0" Click="BtnStartAudio_Click"/>
+      <Button Content="停止录音" Width="120" Click="BtnStopAudio_Click"/>
+    </StackPanel>
+
+    <TextBlock x:Name="TxtLog" Grid.Row="2" TextWrapping="Wrap"
+               Text="就绪…" />
+  </Grid>
+</Window>
