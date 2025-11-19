@@ -180,13 +180,17 @@ namespace Screenshot_v3_0
                 WriteLine($"视频文件: {videoPath}");
                 WriteLine($"开始音频录制（NAudio WasapiLoopbackCapture，即使静音也会录制），输出路径: {audioOutputPath}");
                 WriteLine($"预期音频文件: {expectedAudioPath}");
+                
+                // 连接音频数据事件，实现边录边合成
+                _audioRecorder.AudioSampleAvailable += OnAudioSampleAvailable;
+                
                 _audioRecorder.Start(audioOutputPath);
                 
                 // 等待音频录制启动
                 System.Threading.Thread.Sleep(300);
                 
                 // 启动 FFmpeg 录制视频
-                // VideoEncoder.Start() 会尝试直接录制有声视频，如果失败则只录制视频
+                // VideoEncoder.Start() 会尝试直接录制有声视频，如果失败则使用音频管道实时合成
                 WriteLine($"启动 FFmpeg 录制视频...");
                 _videoEncoder.Start();
 
@@ -233,61 +237,55 @@ namespace Screenshot_v3_0
                         // 先发送停止信号给 FFmpeg（不等待完成）
                         _videoEncoder?.RequestStop();
                         
+                        // 断开音频事件连接（避免继续写入数据）
+                        _audioRecorder.AudioSampleAvailable -= OnAudioSampleAvailable;
+                        
                         // 立即停止音频录制（与视频同时停止）
                         WriteLine($"停止音频录制");
                         _audioRecorder.Stop();
                         
-                        // 等待音频文件写入完成
+                        // 等待音频管道数据刷新（实时合成模式）或音频文件写入完成（文件合并模式）
                         System.Threading.Thread.Sleep(1000);
                         
-                        // 设置音频文件路径（必须在调用 Finish() 之前设置）
-                        // AudioRecorder 创建的文件名是 temp_{filename}.wav
-                        // 查找所有 temp_*.wav 文件
-                        var tempAudioFiles = Directory.GetFiles(_workDir, "temp_*.wav");
-                        WriteLine($"找到 {tempAudioFiles.Length} 个临时音频文件（temp_*.wav）");
+                        // 检查是否是实时合成模式（_hasAudioInVideo = true 且没有找到音频设备）
+                        // 如果是实时合成模式，不需要查找和合并音频文件
+                        // 如果是文件合并模式，需要查找音频文件并合并
                         
+                        // 注意：VideoEncoder.Finish() 会根据 _hasAudioInVideo 判断是否需要合并
+                        // 如果是实时合成模式，_hasAudioInVideo = true，Finish() 会跳过合并
+                        // 如果是文件合并模式，_hasAudioInVideo = false，Finish() 会查找 _tempAudioPath 并合并
+                        
+                        // 只有在文件合并模式下，才需要查找和设置音频文件路径
+                        // 实时合成模式下，音频已经通过管道写入 FFmpeg，无需合并
+                        
+                        // 尝试查找临时音频文件（仅在文件合并模式下需要）
+                        var tempAudioFiles = Directory.GetFiles(_workDir, "temp_*.wav");
                         if (tempAudioFiles.Length == 0)
                         {
-                            // 也尝试查找 temp_audio_*.wav（以防万一）
                             tempAudioFiles = Directory.GetFiles(_workDir, "temp_audio_*.wav");
-                            WriteLine($"找到 {tempAudioFiles.Length} 个临时音频文件（temp_audio_*.wav）");
                         }
                         
                         if (tempAudioFiles.Length > 0)
                         {
                             var latestAudioFile = tempAudioFiles.OrderByDescending(f => File.GetCreationTime(f)).First();
                             var audioFileInfo = new FileInfo(latestAudioFile);
-                            WriteLine($"使用音频文件: {latestAudioFile}, 大小: {audioFileInfo.Length} 字节");
+                            WriteLine($"找到临时音频文件: {latestAudioFile}, 大小: {audioFileInfo.Length} 字节");
                             
+                            // 设置音频文件路径（VideoEncoder.Finish() 会根据 _hasAudioInVideo 决定是否使用）
                             if (audioFileInfo.Length > 0)
                             {
-                                WriteLine($"准备设置音频文件到 VideoEncoder: {latestAudioFile}");
                                 _videoEncoder?.SetAudioFile(latestAudioFile);
-                                WriteLine($"音频文件已设置到 VideoEncoder");
-                            }
-                            else
-                            {
-                                WriteWarning($"音频文件大小为 0，跳过合并");
                             }
                         }
                         else
                         {
-                            WriteWarning($"未找到临时音频文件，列出所有文件:");
-                            try
-                            {
-                                var allFiles = Directory.GetFiles(_workDir);
-                                foreach (var file in allFiles)
-                                {
-                                    WriteLine($"  - {file}");
-                                }
-                            }
-                            catch { }
+                            WriteLine($"未找到临时音频文件（可能是实时合成模式，音频已通过管道写入）");
                         }
                         
-                        // 现在停止视频录制并完成编码（会合并音频）
-                        // 注意：必须在设置音频文件路径之后调用 Finish()
+                        // 现在停止视频录制并完成编码
+                        // 注意：如果是实时合成模式，Finish() 会跳过合并；如果是文件合并模式，Finish() 会合并音频
                         WriteLine($"准备停止视频录制（FFmpeg）并完成编码");
-                        _videoEncoder?.Finish(); // 这会发送 'q' 给 FFmpeg，等待退出，然后合并音频
+                        _videoEncoder?.Finish(); // 这会发送 'q' 给 FFmpeg，等待退出，然后根据模式决定是否合并音频
                         WriteLine($"视频编码完成");
 
                 // 释放资源
@@ -334,9 +332,11 @@ namespace Screenshot_v3_0
 
         private void OnAudioSampleAvailable(byte[]? audioData, int bytesRecorded)
         {
-            // 音频数据由 AudioRecorder 直接保存到文件，FFmpeg 会读取该文件
-            // 不再需要通过事件传递音频数据
-            // 这个方法保留是为了兼容 AudioRecorder 的事件，但不需要做任何处理
+            // 音频样本可用事件：将音频数据实时传递给 FFmpeg（边录边合成）
+            if (audioData != null && bytesRecorded > 0 && _videoEncoder != null)
+            {
+                _videoEncoder.WriteAudioData(audioData, bytesRecorded);
+            }
         }
 
 
