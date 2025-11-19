@@ -28,6 +28,7 @@ namespace Screenshot_v3_0
         private int _offsetY;
         private bool _hasAudioInVideo; // 标记视频中是否已包含音频（FFmpeg 直接录制）
         private bool _hasRequestedStop; // 标记是否已发送停止信号
+        private Stream? _audioInputStream; // 音频管道流（用于实时合成）
 
         public VideoEncoder(string outputPath, RecordingConfig config)
         {
@@ -117,13 +118,13 @@ namespace Screenshot_v3_0
                 }
                 else
                 {
-                    // 找不到音频设备，退回到只录视频（需要后续合并）
-                    arguments = BuildFfmpegCommandWithoutAudio(videoBitrateKbps);
-                    _hasAudioInVideo = false;
-                    WriteLine($"✓ 录制方式: 分步录制后合并");
+                    // 找不到音频设备，使用音频管道实时合成（边录边合成）
+                    arguments = BuildFfmpegCommandWithAudioPipe(videoBitrateKbps);
+                    _hasAudioInVideo = true; // 标记为包含音频（通过管道实时合成）
+                    WriteLine($"✓ 录制方式: 边录边合成（实时合成）");
                     WriteLine($"  视频: FFmpeg 录制（gdigrab）");
-                    WriteLine($"  音频: NAudio WasapiLoopbackCapture 录制（即使静音也会录制）");
-                    WriteLine($"  说明: 录制完成后使用 FFmpeg 合并音频到 MP4");
+                    WriteLine($"  音频: NAudio WasapiLoopbackCapture → FFmpeg 管道（实时合成）");
+                    WriteLine($"  说明: 音频数据通过管道实时传递给 FFmpeg，直接输出 MP4，无需后期合并");
                 }
 
                 var processInfo = new ProcessStartInfo
@@ -141,6 +142,13 @@ namespace Screenshot_v3_0
                 if (_ffmpegProcess == null)
                 {
                     throw new Exception("无法启动 FFmpeg 进程");
+                }
+
+                // 如果使用音频管道，保存标准输入流引用（用于写入音频数据）
+                if (_hasAudioInVideo && _ffmpegProcess.StandardInput != null)
+                {
+                    _audioInputStream = _ffmpegProcess.StandardInput.BaseStream;
+                    WriteLine($"已准备音频管道，准备接收音频数据（实时合成模式）");
                 }
 
                 // 启动错误输出读取线程（避免缓冲区满导致进程阻塞）
@@ -266,7 +274,7 @@ namespace Screenshot_v3_0
         }
 
         /// <summary>
-        /// 构建无音频的 FFmpeg 命令
+        /// 构建无音频的 FFmpeg 命令（只录制视频）
         /// </summary>
         private string BuildFfmpegCommandWithoutAudio(int videoBitrateKbps)
         {
@@ -298,7 +306,50 @@ namespace Screenshot_v3_0
         }
 
         /// <summary>
-        /// 设置音频文件路径（用于合并）
+        /// 构建带音频管道的 FFmpeg 命令（边录边合成）
+        /// </summary>
+        private string BuildFfmpegCommandWithAudioPipe(int videoBitrateKbps)
+        {
+            // 使用 gdigrab 录制视频，通过管道（stdin）接收音频数据
+            // 音频格式：pcm_f32le（32位浮点，NAudio WasapiLoopbackCapture 的默认格式）
+            // 采样率：48000 Hz（NAudio 默认）
+            // 声道：2（立体声）
+            return $"-hide_banner -nostats -loglevel warning " +
+                   $"-thread_queue_size 1024 " +
+                   $"-f gdigrab " +
+                   $"-framerate {_frameRate} " +
+                   $"-offset_x {_offsetX} " +
+                   $"-offset_y {_offsetY} " +
+                   $"-video_size {_videoWidth}x{_videoHeight} " +
+                   $"-use_wallclock_as_timestamps 1 " +
+                   $"-i desktop " +
+                   $"-f f32le " +  // 32位浮点 PCM（NAudio WasapiLoopbackCapture 的格式）
+                   $"-ar {_audioSampleRate} " +  // 采样率
+                   $"-ac 2 " +  // 立体声
+                   $"-use_wallclock_as_timestamps 1 " +
+                   $"-i pipe:0 " +  // 从标准输入读取音频
+                   $"-c:v libx264 " +
+                   $"-preset medium " +
+                   $"-b:v {videoBitrateKbps}k " +
+                   $"-pix_fmt yuv420p " +
+                   $"-c:a aac " +
+                   $"-b:a {_config.AudioBitrate}k " +
+                   $"-movflags +faststart " +
+                   $"-r {_frameRate} " +
+                   $"-g {_frameRate * 2} " +
+                   $"-keyint_min {_frameRate} " +
+                   $"-sc_threshold 0 " +
+                   $"-threads 2 " +
+                   $"-maxrate {videoBitrateKbps * 2}k " +
+                   $"-bufsize {videoBitrateKbps * 4}k " +
+                   $"-avoid_negative_ts make_zero " +
+                   $"-fflags +genpts " +
+                   $"-shortest " +
+                   $"-y \"{_outputPath}\"";
+        }
+
+        /// <summary>
+        /// 设置音频文件路径（用于合并，仅在非实时合成模式下使用）
         /// </summary>
         public void SetAudioFile(string audioFilePath)
         {
@@ -308,6 +359,33 @@ namespace Screenshot_v3_0
             {
                 var fileInfo = new FileInfo(audioFilePath);
                 WriteLine($"音频文件大小: {fileInfo.Length} 字节");
+            }
+        }
+
+        /// <summary>
+        /// 写入音频数据到 FFmpeg 管道（用于实时合成）
+        /// </summary>
+        public void WriteAudioData(byte[] buffer, int bytesRecorded)
+        {
+            if (!_hasAudioInVideo || _audioInputStream == null || _ffmpegProcess == null || _ffmpegProcess.HasExited)
+                return;
+
+            try
+            {
+                lock (_lockObject)
+                {
+                    if (_audioInputStream != null && !_ffmpegProcess.HasExited)
+                    {
+                        // 直接写入二进制数据到标准输入
+                        _audioInputStream.Write(buffer, 0, bytesRecorded);
+                        _audioInputStream.Flush();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // 静默处理错误，避免影响录制
+                WriteWarning($"写入音频数据到 FFmpeg 管道失败: {ex.Message}");
             }
         }
 
@@ -469,10 +547,11 @@ namespace Screenshot_v3_0
                                 // 检查是否需要合并音频
                                 if (_hasAudioInVideo)
                                 {
-                                    // 视频中已包含音频（FFmpeg 直接录制），无需合并
+                                    // 视频中已包含音频（FFmpeg 直接录制或实时合成），无需合并
                                     WriteLine($"========== 录制完成 ==========");
                                     WriteLine($"✓ 最终文件: {_outputPath}");
-                                    WriteLine($"✓ 生成方式: FFmpeg 直接生成 MP4（视频+音频同步录制）");
+                                    WriteLine($"✓ 生成方式: 边录边合成（实时合成）");
+                                    WriteLine($"  说明: 音频数据通过管道实时传递给 FFmpeg，直接输出 MP4，无需后期合并");
                                     WriteLine($"✓ 无需合并: 视频已包含音频流");
                                 }
                                 else
@@ -512,18 +591,30 @@ namespace Screenshot_v3_0
                     }
                     finally
                     {
-                        try
+                    try
+                    {
+                        // 关闭音频管道流
+                        if (_audioInputStream != null)
                         {
-                            process.Dispose();
+                            try
+                            {
+                                _audioInputStream.Flush();
+                                _audioInputStream.Close();
+                            }
+                            catch { }
+                            _audioInputStream = null;
                         }
-                        catch { }
-                    }
-                }
 
-                lock (_lockObject)
-                {
-                    _ffmpegProcess = null;
+                        process.Dispose();
+                    }
+                    catch { }
                 }
+            }
+
+            lock (_lockObject)
+            {
+                _ffmpegProcess = null;
+            }
 
                 // 保留临时音频文件（用于调试）
                 if (!string.IsNullOrEmpty(_tempAudioPath) && File.Exists(_tempAudioPath))
