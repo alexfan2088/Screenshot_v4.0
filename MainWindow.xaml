@@ -13,12 +13,21 @@
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
 
       <!-- 菜单栏 -->
       <Menu Grid.Row="0" Margin="0,0,0,10">
         <MenuItem Header="设置">
           <MenuItem Header="录制设置..." Click="MenuSettings_Click"/>
+          <Separator/>
+          <MenuItem Header="日志设置">
+            <MenuItem Header="输出日志" x:Name="MenuLogEnabled" IsCheckable="True" IsChecked="True" Click="MenuLogEnabled_Click"/>
+            <MenuItem Header="不输出日志" x:Name="MenuLogDisabled" IsCheckable="True" IsChecked="False" Click="MenuLogDisabled_Click"/>
+            <Separator/>
+            <MenuItem Header="日志文件覆盖" x:Name="MenuLogFileOverwrite" IsCheckable="True" IsChecked="True" Click="MenuLogFileOverwrite_Click"/>
+            <MenuItem Header="日志文件叠加" x:Name="MenuLogFileAppend" IsCheckable="True" IsChecked="False" Click="MenuLogFileAppend_Click"/>
+          </MenuItem>
         </MenuItem>
       </Menu>
 
@@ -29,6 +38,13 @@
                 Click="BtnStartVideo_Click" x:Name="BtnStartVideo"/>
         <Button Content="停止录制视频" Width="140" 
                 Click="BtnStopVideo_Click" x:Name="BtnStopVideo" IsEnabled="False"/>
+      </StackPanel>
+
+      <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,16">
+        <Button Content="选择录制区域" Width="140" Margin="0,0,12,0"
+                Click="BtnSelectRegion_Click"/>
+        <Button Content="清除区域选择" Width="140"
+                Click="BtnClearRegion_Click"/>
       </StackPanel>
     </Grid>
     

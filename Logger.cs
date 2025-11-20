@@ -10,6 +10,7 @@ namespace Screenshot_v3_0
     public static class Logger
     {
         private static bool _enabled = true; // 默认启用日志
+        private static int _logFileMode = 0; // 日志文件模式 0=覆盖，1=叠加
         private static string? _logFilePath;
         private static readonly object _lockObject = new object();
 
@@ -32,9 +33,22 @@ namespace Screenshot_v3_0
         }
 
         /// <summary>
+        /// 设置日志文件模式（0=覆盖，1=叠加）
+        /// </summary>
+        public static void SetLogFileMode(int mode)
+        {
+            _logFileMode = mode;
+        }
+
+        /// <summary>
+        /// 获取日志文件模式（0=覆盖，1=叠加）
+        /// </summary>
+        public static int LogFileMode => _logFileMode;
+
+        /// <summary>
         /// 设置日志文件目录
         /// </summary>
-        public static void SetLogDirectory(string directory)
+        public static void SetLogDirectory(string directory, bool applyMode = true)
         {
             try
             {
@@ -44,8 +58,11 @@ namespace Screenshot_v3_0
                 }
                 string logFileName = $"log_{DateTime.Now:yyyyMMdd}.txt";
                 _logFilePath = Path.Combine(directory, logFileName);
-                // 清空日志文件（覆盖模式）
-                ClearLog();
+                // 根据模式决定是否清空日志文件
+                if (applyMode && _logFileMode == 0)
+                {
+                    ClearLog();
+                }
             }
             catch
             {
@@ -99,9 +116,17 @@ namespace Screenshot_v3_0
                 
                 lock (_lockObject)
                 {
-                    // 如果文件不存在，创建新文件；如果存在，追加内容
-                    // 注意：SetLogDirectory 会先清空文件，所以这里总是追加
-                    File.AppendAllText(_logFilePath, logMessage + Environment.NewLine);
+                    // 如果文件不存在，创建新文件；如果存在，根据模式决定追加或覆盖
+                    if (_logFileMode == 0 && !File.Exists(_logFilePath))
+                    {
+                        // 覆盖模式：如果文件不存在，创建新文件
+                        File.WriteAllText(_logFilePath, logMessage + Environment.NewLine);
+                    }
+                    else
+                    {
+                        // 叠加模式：总是追加；覆盖模式：文件已存在时也追加（因为 SetLogDirectory 已清空）
+                        File.AppendAllText(_logFilePath, logMessage + Environment.NewLine);
+                    }
                 }
 
                 // 同时输出到调试窗口

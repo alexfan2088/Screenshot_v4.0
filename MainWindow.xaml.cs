@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using System.Runtime.InteropServices;
 using System.Drawing;
 using static Screenshot_v3_0.Logger;
 
@@ -16,6 +17,7 @@ namespace Screenshot_v3_0
         private readonly string _workDir;
         private readonly string _configPath;
         private bool _isVideoRecording;
+        private RegionHighlightWindow? _regionHighlightWindow;
 
         public MainWindow()
         {
@@ -40,19 +42,37 @@ namespace Screenshot_v3_0
             
             // 初始化日志系统
             Logger.Enabled = _config.LogEnabled == 1;
+            Logger.SetLogFileMode(_config.LogFileMode);
             // 设置日志文件目录为工作目录（与视频、音频文件同一目录）
-            // SetLogDirectory 会自动清空日志文件（覆盖模式）
+            // SetLogDirectory 会根据模式决定是否清空日志文件
             Logger.SetLogDirectory(_workDir);
+            
+            // 初始化菜单项状态
+            UpdateLogMenuItems();
+            
             Logger.WriteLine("程序启动");
             Logger.WriteLine($"日志状态: {(Logger.Enabled ? "启用" : "禁用")}");
+            Logger.WriteLine($"日志文件模式: {(_config.LogFileMode == 0 ? "覆盖" : "叠加")}");
             
             UpdateConfigDisplay();
+            
+            // 延迟初始化区域高亮，直到窗口加载完成
+            this.Loaded += (s, e) =>
+            {
+                UpdateRegionOverlay();
+            };
         }
 
         private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             // 立即允许关闭，不阻塞
             e.Cancel = false;
+
+            Dispatcher.Invoke(() =>
+            {
+                _regionHighlightWindow?.Close();
+                _regionHighlightWindow = null;
+            });
 
             // 在后台线程执行清理，不阻塞窗口关闭
             ThreadPool.QueueUserWorkItem(_ =>
@@ -155,20 +175,56 @@ namespace Screenshot_v3_0
                 if (_isVideoRecording) return;
 
                 var videoPath = Path.Combine(_workDir, $"video{DateTime.Now:yyMMddHHmmss}.mp4");
-                
-                // 计算分辨率
-                double resolutionScale = _config.VideoResolutionScale / 100.0;
-                int screenWidth = (int)SystemParameters.PrimaryScreenWidth;
-                int screenHeight = (int)SystemParameters.PrimaryScreenHeight;
-                int videoWidth = (int)(screenWidth * resolutionScale);
-                int videoHeight = (int)(screenHeight * resolutionScale);
+
+                int videoWidth;
+                int videoHeight;
+                int offsetX = 0;
+                int offsetY = 0;
+
+                var (screenWidthPixels, screenHeightPixels) = GetPrimaryScreenPixelSize();
+
+                if (HasValidCustomRegion())
+                {
+                    int regionRight = _config.RegionLeft + _config.RegionWidth;
+                    int regionBottom = _config.RegionTop + _config.RegionHeight;
+                    
+                    if (_config.RegionLeft < 0 || _config.RegionTop < 0 ||
+                        regionRight > screenWidthPixels || regionBottom > screenHeightPixels)
+                    {
+                        string errorMsg = $"选择的录制区域超出主屏幕范围！\n" +
+                                         $"区域: ({_config.RegionLeft}, {_config.RegionTop}) 到 ({regionRight}, {regionBottom})\n" +
+                                         $"主屏幕: (0, 0) 到 ({screenWidthPixels}, {screenHeightPixels})\n" +
+                                         $"请重新选择区域或清除区域设置使用全屏录制。";
+                        
+                        WriteError(errorMsg);
+                        if (StatusBarInfo != null)
+                        {
+                            StatusBarInfo.Text = "录制区域超出屏幕范围，请重新选择";
+                        }
+                        
+                        MessageBox.Show(errorMsg, "区域超出范围", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+                    
+                    videoWidth = _config.RegionWidth;
+                    videoHeight = _config.RegionHeight;
+                    offsetX = _config.RegionLeft;
+                    offsetY = _config.RegionTop;
+                    WriteLine($"使用自定义区域录制: {videoWidth}x{videoHeight} @ 起点 ({offsetX}, {offsetY})");
+                }
+                else
+                {
+                    double resolutionScale = _config.VideoResolutionScale / 100.0;
+                    videoWidth = (int)(screenWidthPixels * resolutionScale);
+                    videoHeight = (int)(screenHeightPixels * resolutionScale);
+                }
 
                 // 创建视频编码器（不再需要 VideoRecorder，FFmpeg 直接录制）
                 _videoEncoder = new VideoEncoder(videoPath, _config);
 
-                // 初始化编码器（offsetX 和 offsetY 都是 0，从屏幕左上角开始）
+                // 初始化编码器（支持自定义区域偏移）
                 _videoEncoder.Initialize(videoWidth, videoHeight, _config.VideoFrameRate, 
-                    _config.AudioSampleRate, 2, offsetX: 0, offsetY: 0);
+                    _config.AudioSampleRate, 2, offsetX, offsetY);
 
                 // 开始音频录制（使用 NAudio WasapiLoopbackCapture，无需虚拟声卡）
                 // 注意：无论是否有声音输出，都要录制音频（包括静音）
@@ -200,7 +256,14 @@ namespace Screenshot_v3_0
 
                 if (StatusBarInfo != null)
                 {
-                    StatusBarInfo.Text = $"开始录制视频 → {videoPath} | 分辨率: {videoWidth}x{videoHeight} @ {_config.VideoFrameRate}fps";
+                    if (HasValidCustomRegion())
+                    {
+                        StatusBarInfo.Text = $"开始录制自定义区域：{videoWidth}x{videoHeight} @ ({offsetX},{offsetY})";
+                    }
+                    else
+                    {
+                        StatusBarInfo.Text = $"开始录制视频 → {videoPath} | 分辨率: {videoWidth}x{videoHeight} @ {_config.VideoFrameRate}fps";
+                    }
                 }
             }
             catch (Exception ex)
@@ -346,13 +409,353 @@ namespace Screenshot_v3_0
             {
                 if (StatusBarConfig != null)
                 {
+                    string regionInfo = HasValidCustomRegion()
+                        ? $"区域：{_config.RegionWidth}x{_config.RegionHeight} @ ({_config.RegionLeft},{_config.RegionTop})"
+                        : "区域：全屏";
+
                     StatusBarConfig.Text = $"视频：{_config.VideoResolutionScale}%分辨率，{_config.VideoFrameRate}fps，H.264 | " +
-                                         $"音频：{_config.AudioSampleRate / 1000}kHz，{_config.AudioBitrate}kbps";
+                                           $"音频：{_config.AudioSampleRate / 1000}kHz，{_config.AudioBitrate}kbps | {regionInfo}";
                 }
             }
             catch (Exception ex)
             {
                 WriteError($"更新配置显示失败", ex);
+            }
+        }
+
+        private bool HasValidCustomRegion()
+        {
+            return _config.UseCustomRegion &&
+                   _config.RegionWidth > 0 &&
+                   _config.RegionHeight > 0;
+        }
+
+        private void UpdateRegionOverlay()
+        {
+            try
+            {
+                if (HasValidCustomRegion())
+                {
+                    if (_regionHighlightWindow == null)
+                    {
+                        _regionHighlightWindow = new RegionHighlightWindow();
+                        // 只在主窗口已显示时设置 Owner
+                        if (IsLoaded && IsVisible)
+                        {
+                            _regionHighlightWindow.Owner = this;
+                        }
+                    }
+                    else if (IsLoaded && IsVisible && _regionHighlightWindow.Owner == null)
+                    {
+                        // 如果之前没有设置 Owner，现在设置
+                        _regionHighlightWindow.Owner = this;
+                    }
+
+                    var rect = new Int32Rect(
+                        _config.RegionLeft,
+                        _config.RegionTop,
+                        _config.RegionWidth,
+                        _config.RegionHeight);
+
+                    _regionHighlightWindow.ShowRegion(rect);
+                }
+                else
+                {
+                    _regionHighlightWindow?.HideRegion();
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"更新区域高亮失败", ex);
+            }
+        }
+
+        private void BtnSelectRegion_Click(object sender, RoutedEventArgs e)
+        {
+            RegionSelectionWindow? selector = null;
+            try
+            {
+                if (_isVideoRecording)
+                {
+                    if (StatusBarInfo != null)
+                    {
+                        StatusBarInfo.Text = "请先停止录制，再调整录制区域";
+                    }
+                    return;
+                }
+
+                selector = new RegionSelectionWindow
+                {
+                    Owner = this
+                };
+
+                bool? dialogResult = selector.ShowDialog();
+                if (dialogResult == true)
+                {
+                    var rect = selector.SelectedRect;
+                    if (rect.Width > 0 && rect.Height > 0)
+                    {
+                        // 验证区域是否在主屏幕范围内
+                        var (screenWidth, screenHeight) = GetPrimaryScreenPixelSize();
+                        int regionRight = rect.X + rect.Width;
+                        int regionBottom = rect.Y + rect.Height;
+                        
+                        if (rect.X < 0 || rect.Y < 0 || regionRight > screenWidth || regionBottom > screenHeight)
+                        {
+                            string warningMsg = $"选择的区域部分超出主屏幕范围！\n" +
+                                               $"区域: ({rect.X}, {rect.Y}) 到 ({regionRight}, {regionBottom})\n" +
+                                               $"主屏幕: (0, 0) 到 ({screenWidth}, {screenHeight})\n" +
+                                               $"录制时只会录制主屏幕范围内的部分。\n\n" +
+                                               $"是否继续使用此区域？";
+                            
+                            WriteWarning(warningMsg);
+                            
+                            var result = MessageBox.Show(warningMsg, "区域超出范围", 
+                                MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                            
+                            if (result == MessageBoxResult.No)
+                            {
+                                if (StatusBarInfo != null)
+                                {
+                                    StatusBarInfo.Text = "已取消选择区域";
+                                }
+                                return;
+                            }
+                        }
+                        
+                        _config.UseCustomRegion = true;
+                        _config.RegionLeft = rect.X;
+                        _config.RegionTop = rect.Y;
+                        _config.RegionWidth = rect.Width;
+                        _config.RegionHeight = rect.Height;
+                        _config.Save(_configPath);
+
+                        UpdateRegionOverlay();
+                        UpdateConfigDisplay();
+
+                        WriteLine($"选择录制区域: 左上=({rect.X},{rect.Y}), 大小={rect.Width}x{rect.Height}");
+                        if (StatusBarInfo != null)
+                        {
+                            StatusBarInfo.Text = $"已选择区域：{rect.Width}x{rect.Height} @ ({rect.X},{rect.Y})";
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"选择录制区域失败", ex);
+                if (StatusBarInfo != null)
+                {
+                    StatusBarInfo.Text = $"选择录制区域失败：{ex.Message}";
+                }
+            }
+            finally
+            {
+                // 确保窗口正确关闭和清理
+                try
+                {
+                    if (selector != null && selector.IsVisible)
+                    {
+                        selector.Close();
+                    }
+                }
+                catch
+                {
+                    // 忽略关闭错误
+                }
+            }
+        }
+
+        private void BtnClearRegion_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (_isVideoRecording)
+                {
+                    if (StatusBarInfo != null)
+                    {
+                        StatusBarInfo.Text = "录制中无法清除区域，请先停止录制";
+                    }
+                    return;
+                }
+
+                _config.UseCustomRegion = false;
+                _config.RegionLeft = 0;
+                _config.RegionTop = 0;
+                _config.RegionWidth = 0;
+                _config.RegionHeight = 0;
+                _config.Save(_configPath);
+
+                UpdateRegionOverlay();
+                UpdateConfigDisplay();
+
+                WriteLine("已清除自定义录制区域设置，恢复全屏录制");
+                if (StatusBarInfo != null)
+                {
+                    StatusBarInfo.Text = "已清除自定义录制区域，恢复全屏";
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"清除录制区域失败", ex);
+                if (StatusBarInfo != null)
+                {
+                    StatusBarInfo.Text = $"清除录制区域失败：{ex.Message}";
+                }
+            }
+        }
+
+        private (int width, int height) GetPrimaryScreenPixelSize()
+        {
+            int width = GetSystemMetrics(SM_CXSCREEN);
+            int height = GetSystemMetrics(SM_CYSCREEN);
+
+            if (width <= 0 || height <= 0)
+            {
+                // 回退到 WPF 的 SystemParameters（单位为 DIP，需要乘 DPI 比例，但通常足够）
+                width = (int)SystemParameters.PrimaryScreenWidth;
+                height = (int)SystemParameters.PrimaryScreenHeight;
+            }
+
+            return (width, height);
+        }
+
+        private const int SM_CXSCREEN = 0;
+        private const int SM_CYSCREEN = 1;
+
+        [DllImport("user32.dll")]
+        private static extern int GetSystemMetrics(int nIndex);
+
+        /// <summary>
+        /// 更新日志菜单项状态
+        /// </summary>
+        private void UpdateLogMenuItems()
+        {
+            try
+            {
+                // 更新日志开关状态
+                if (MenuLogEnabled != null)
+                {
+                    MenuLogEnabled.IsChecked = _config.LogEnabled == 1;
+                }
+                if (MenuLogDisabled != null)
+                {
+                    MenuLogDisabled.IsChecked = _config.LogEnabled == 0;
+                }
+
+                // 更新日志文件模式状态
+                if (MenuLogFileOverwrite != null)
+                {
+                    MenuLogFileOverwrite.IsChecked = _config.LogFileMode == 0;
+                }
+                if (MenuLogFileAppend != null)
+                {
+                    MenuLogFileAppend.IsChecked = _config.LogFileMode == 1;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"更新日志菜单项状态失败", ex);
+            }
+        }
+
+        /// <summary>
+        /// 保存日志配置
+        /// </summary>
+        private void SaveLogConfig()
+        {
+            try
+            {
+                _config.Save(_configPath);
+                Logger.SetLogFileMode(_config.LogFileMode);
+                // 如果切换到覆盖模式，需要重新设置日志目录以清空文件
+                if (_config.LogFileMode == 0)
+                {
+                    Logger.SetLogDirectory(_workDir, applyMode: true);
+                }
+                // 只有在日志启用时才写入日志（避免在禁用时写入）
+                if (_config.LogEnabled == 1)
+                {
+                    Logger.WriteLine($"日志配置已更新: 状态={(_config.LogEnabled == 1 ? "启用" : "禁用")}, 模式={(_config.LogFileMode == 0 ? "覆盖" : "叠加")}");
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"保存日志配置失败", ex);
+            }
+        }
+
+        private void MenuLogEnabled_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                _config.LogEnabled = 1;
+                Logger.Enabled = true;
+                UpdateLogMenuItems();
+                SaveLogConfig();
+                if (StatusBarInfo != null)
+                {
+                    StatusBarInfo.Text = "日志已启用";
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"启用日志失败", ex);
+            }
+        }
+
+        private void MenuLogDisabled_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                _config.LogEnabled = 0;
+                Logger.Enabled = false;
+                UpdateLogMenuItems();
+                SaveLogConfig();
+                if (StatusBarInfo != null)
+                {
+                    StatusBarInfo.Text = "日志已禁用";
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"禁用日志失败", ex);
+            }
+        }
+
+        private void MenuLogFileOverwrite_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                _config.LogFileMode = 0;
+                UpdateLogMenuItems();
+                SaveLogConfig();
+                if (StatusBarInfo != null)
+                {
+                    StatusBarInfo.Text = "日志文件模式：覆盖";
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"设置日志文件覆盖模式失败", ex);
+            }
+        }
+
+        private void MenuLogFileAppend_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                _config.LogFileMode = 1;
+                UpdateLogMenuItems();
+                SaveLogConfig();
+                if (StatusBarInfo != null)
+                {
+                    StatusBarInfo.Text = "日志文件模式：叠加";
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"设置日志文件叠加模式失败", ex);
             }
         }
     }
