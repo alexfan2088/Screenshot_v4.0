@@ -29,6 +29,8 @@ namespace Screenshot_v3_0
         private bool _hasAudioInVideo; // 标记视频中是否已包含音频（FFmpeg 直接录制）
         private bool _hasRequestedStop; // 标记是否已发送停止信号
         private Stream? _audioInputStream; // 音频管道流（用于实时合成）
+        private int _audioBitsPerSample; // 音频位深度（用于确定 FFmpeg 输入格式）
+        private bool _audioIsFloat; // 音频是否为浮点格式
 
         public VideoEncoder(string outputPath, RecordingConfig config)
         {
@@ -71,9 +73,11 @@ namespace Screenshot_v3_0
                 }
 
                 // 不在这里设置 _tempAudioPath，等待 SetAudioFile 设置
-                   _tempAudioPath = null;
-                   _hasAudioInVideo = false; // 初始化时假设没有音频
-                   _hasRequestedStop = false; // 初始化时未发送停止信号
+                _tempAudioPath = null;
+                _hasAudioInVideo = false; // 初始化时假设没有音频
+                _hasRequestedStop = false; // 初始化时未发送停止信号
+                _audioBitsPerSample = 16; // 默认 16 位（NAudio WasapiLoopbackCapture 通常输出 16 位）
+                _audioIsFloat = false; // 默认整数格式（NAudio WasapiLoopbackCapture 通常输出整数 PCM）
 
                 _isInitialized = true;
 
@@ -118,13 +122,15 @@ namespace Screenshot_v3_0
                 }
                 else
                 {
-                    // 找不到音频设备，使用音频管道实时合成（边录边合成）
-                    arguments = BuildFfmpegCommandWithAudioPipe(videoBitrateKbps);
-                    _hasAudioInVideo = true; // 标记为包含音频（通过管道实时合成）
-                    WriteLine($"✓ 录制方式: 边录边合成（实时合成）");
+                    // 找不到音频设备，回退到文件合并模式（边录边合成有格式匹配问题，暂时禁用）
+                    // TODO: 修复音频格式匹配问题后，可以重新启用边录边合成
+                    arguments = BuildFfmpegCommandWithoutAudio(videoBitrateKbps);
+                    _hasAudioInVideo = false; // 标记为不包含音频（需要后续合并）
+                    WriteLine($"✓ 录制方式: 分步录制后合并（边录边合成暂时禁用）");
                     WriteLine($"  视频: FFmpeg 录制（gdigrab）");
-                    WriteLine($"  音频: NAudio WasapiLoopbackCapture → FFmpeg 管道（实时合成）");
-                    WriteLine($"  说明: 音频数据通过管道实时传递给 FFmpeg，直接输出 MP4，无需后期合并");
+                    WriteLine($"  音频: NAudio WasapiLoopbackCapture 录制（即使静音也会录制）");
+                    WriteLine($"  说明: 录制完成后使用 FFmpeg 合并音频到 MP4");
+                    WriteLine($"  注意: 边录边合成功能因音频格式匹配问题暂时禁用，使用文件合并模式");
                 }
 
                 var processInfo = new ProcessStartInfo
@@ -311,9 +317,33 @@ namespace Screenshot_v3_0
         private string BuildFfmpegCommandWithAudioPipe(int videoBitrateKbps)
         {
             // 使用 gdigrab 录制视频，通过管道（stdin）接收音频数据
-            // 音频格式：pcm_f32le（32位浮点，NAudio WasapiLoopbackCapture 的默认格式）
-            // 采样率：48000 Hz（NAudio 默认）
-            // 声道：2（立体声）
+            // 根据实际音频格式确定 FFmpeg 输入格式
+            string audioFormat;
+            if (_audioIsFloat)
+            {
+                // 浮点格式
+                if (_audioBitsPerSample == 32)
+                    audioFormat = "f32le";  // 32位浮点
+                else if (_audioBitsPerSample == 64)
+                    audioFormat = "f64le";  // 64位浮点
+                else
+                    audioFormat = "f32le";  // 默认 32位浮点
+            }
+            else
+            {
+                // 整数格式（NAudio WasapiLoopbackCapture 通常输出 16位整数）
+                if (_audioBitsPerSample == 16)
+                    audioFormat = "s16le";  // 16位有符号整数（最常见）
+                else if (_audioBitsPerSample == 24)
+                    audioFormat = "s24le";  // 24位有符号整数
+                else if (_audioBitsPerSample == 32)
+                    audioFormat = "s32le";  // 32位有符号整数
+                else
+                    audioFormat = "s16le";  // 默认 16位整数
+            }
+            
+            WriteLine($"FFmpeg 音频管道格式: {audioFormat} ({_audioBitsPerSample}位, {(_audioIsFloat ? "浮点" : "整数")})");
+            
             return $"-hide_banner -nostats -loglevel warning " +
                    $"-thread_queue_size 1024 " +
                    $"-f gdigrab " +
@@ -323,7 +353,7 @@ namespace Screenshot_v3_0
                    $"-video_size {_videoWidth}x{_videoHeight} " +
                    $"-use_wallclock_as_timestamps 1 " +
                    $"-i desktop " +
-                   $"-f f32le " +  // 32位浮点 PCM（NAudio WasapiLoopbackCapture 的格式）
+                   $"-f {audioFormat} " +  // 根据实际格式设置
                    $"-ar {_audioSampleRate} " +  // 采样率
                    $"-ac 2 " +  // 立体声
                    $"-use_wallclock_as_timestamps 1 " +

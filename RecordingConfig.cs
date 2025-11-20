@@ -21,6 +21,14 @@ namespace Screenshot_v3_0
         
         // 日志参数
         public int LogEnabled { get; set; } = 1; // 日志开关 1=启用，0=禁用
+        public int LogFileMode { get; set; } = 0; // 日志文件模式 0=覆盖，1=叠加
+
+        // 自定义录制区域
+        public bool UseCustomRegion { get; set; } = false;
+        public int RegionLeft { get; set; }
+        public int RegionTop { get; set; }
+        public int RegionWidth { get; set; }
+        public int RegionHeight { get; set; }
 
         /// <summary>
         /// 获取视频码率（Mbps）
