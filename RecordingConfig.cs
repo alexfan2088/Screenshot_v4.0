@@ -44,14 +44,16 @@ namespace Screenshot_v3_0
         /// <summary>
         /// 获取视频码率（Mbps）
         /// </summary>
-        public int GetVideoBitrateMbps()
+        /// <param name="outputWidth">输出视频宽度（应用分辨率比例后），如果为0则使用默认值</param>
+        /// <param name="outputHeight">输出视频高度（应用分辨率比例后），如果为0则使用默认值</param>
+        public int GetVideoBitrateMbps(int outputWidth = 0, int outputHeight = 0)
         {
             return VideoBitrate switch
             {
                 "Low" => 1,
                 "Medium" => 3,
                 "High" => 5,
-                "Auto" => GetAutoVideoBitrate(),
+                "Auto" => GetAutoVideoBitrate(outputWidth, outputHeight),
                 _ => 3
             };
         }
@@ -59,11 +61,24 @@ namespace Screenshot_v3_0
         /// <summary>
         /// 根据分辨率自动计算码率
         /// </summary>
-        private int GetAutoVideoBitrate()
+        /// <param name="outputWidth">输出视频宽度（应用分辨率比例后）</param>
+        /// <param name="outputHeight">输出视频高度（应用分辨率比例后）</param>
+        private int GetAutoVideoBitrate(int outputWidth = 0, int outputHeight = 0)
         {
-            // 假设原始分辨率为 1920x1080
-            int scaledWidth = (int)(1920 * VideoResolutionScale / 100.0);
-            int scaledHeight = (int)(1080 * VideoResolutionScale / 100.0);
+            // 如果提供了实际分辨率，使用实际分辨率；否则使用默认值
+            int scaledWidth, scaledHeight;
+            if (outputWidth > 0 && outputHeight > 0)
+            {
+                scaledWidth = outputWidth;
+                scaledHeight = outputHeight;
+            }
+            else
+            {
+                // 假设原始分辨率为 1920x1080
+                scaledWidth = (int)(1920 * VideoResolutionScale / 100.0);
+                scaledHeight = (int)(1080 * VideoResolutionScale / 100.0);
+            }
+            
             int pixels = scaledWidth * scaledHeight;
 
             // 根据像素数估算码率
@@ -75,9 +90,12 @@ namespace Screenshot_v3_0
         /// <summary>
         /// 计算预计文件大小（MB/分钟）
         /// </summary>
-        public double EstimateFileSizePerMinute()
+        /// <param name="outputWidth">输出视频宽度（应用分辨率比例后），如果为0则使用默认值</param>
+        /// <param name="outputHeight">输出视频高度（应用分辨率比例后），如果为0则使用默认值</param>
+        public double EstimateFileSizePerMinute(int outputWidth = 0, int outputHeight = 0)
         {
-            int videoBitrateMbps = GetVideoBitrateMbps();
+            // 使用实际分辨率计算码率（如果码率是Auto，会根据分辨率自动调整）
+            int videoBitrateMbps = GetVideoBitrateMbps(outputWidth, outputHeight);
             double audioBitrateMbps = AudioBitrate / 1000.0; // kbps to Mbps
             return (videoBitrateMbps + audioBitrateMbps) * 60.0 / 8.0; // MB/分钟
         }

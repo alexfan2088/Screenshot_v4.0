@@ -149,7 +149,48 @@ namespace Screenshot_v3_0
 
         private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
-            // 立即允许关闭，不阻塞
+            // 检查是否有正在进行的操作
+            if (_isVideoRecording || _isStoppingRecording)
+            {
+                // 取消关闭
+                e.Cancel = true;
+                
+                // 显示提示消息
+                string message;
+                if (_isVideoRecording)
+                {
+                    message = "正在录制视频，请先停止录制后再关闭程序。";
+                }
+                else if (_isStoppingRecording)
+                {
+                    // 根据当前操作显示具体信息
+                    if (!string.IsNullOrEmpty(_currentOperation))
+                    {
+                        message = $"{_currentOperation}\n\n请等待操作完成后再关闭程序。";
+                    }
+                    else
+                    {
+                        message = "正在生成文件（MP4、PPT、PDF），请等待操作完成后再关闭程序。";
+                    }
+                }
+                else
+                {
+                    message = "正在处理中，请稍候再关闭程序。";
+                }
+                
+                MessageBox.Show(
+                    message,
+                    "无法关闭",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning,
+                    MessageBoxResult.OK
+                );
+                
+                WriteLine($"[窗口关闭] 阻止关闭：{message}");
+                return;
+            }
+
+            // 没有正在进行的操作，允许关闭
             e.Cancel = false;
 
             Dispatcher.Invoke(() =>
@@ -158,62 +199,11 @@ namespace Screenshot_v3_0
                 _regionHighlightWindow = null;
             });
 
-            // 在后台线程执行清理，不阻塞窗口关闭
+            // 在后台线程执行清理
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 try
                 {
-                    // 如果正在录制，快速停止（不等待完成）
-                    if (_isVideoRecording)
-                    {
-                        try
-                        {
-                            // 快速停止，不等待完成（FFmpeg 会自动停止音频录制）
-                            // 使用快速退出模式完成编码，立即终止 FFmpeg
-                            if (_videoEncoder != null)
-                            {
-                                try
-                                {
-                                    _videoEncoder.Finish(quickExit: true);
-                                }
-                                catch (Exception ex)
-                                {
-                                    WriteError($"完成编码失败", ex);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            WriteError($"停止录制时出错", ex);
-                        }
-                    }
-                    else
-                    {
-                        // 如果只是音频录制，也停止
-                        try
-                        {
-                            _audioRecorder.Stop();
-                        }
-                        catch (Exception ex)
-                        {
-                            WriteError($"停止音频录制时出错", ex);
-                        }
-                    }
-
-                    // 延迟释放资源，给 Finish 一些时间
-                    Thread.Sleep(1000);
-                    
-                    // 释放资源
-                    try
-                    {
-                        _videoEncoder?.Dispose();
-                        _audioRecorder?.Dispose();
-                    }
-                    catch (Exception ex)
-                    {
-                        WriteError($"释放资源时出错", ex);
-                    }
-                    
                     // 停止截图定时器
                     try
                     {
@@ -225,6 +215,19 @@ namespace Screenshot_v3_0
                     catch (Exception ex)
                     {
                         WriteError($"停止截图定时器时出错", ex);
+                    }
+                    
+                    // 释放资源
+                    try
+                    {
+                        _videoEncoder?.Dispose();
+                        _audioRecorder?.Dispose();
+                        _pptGenerator?.Dispose();
+                        _pdfGenerator?.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteError($"释放资源时出错", ex);
                     }
                 }
                 catch (Exception ex)
@@ -289,6 +292,9 @@ namespace Screenshot_v3_0
 
                 var (screenWidthPixels, screenHeightPixels) = GetPrimaryScreenPixelSize();
 
+                // 应用分辨率比例：无论是否有自定义区域，都根据分辨率比例缩放视频尺寸
+                double resolutionScale = _config.VideoResolutionScale / 100.0;
+                
                 if (HasValidCustomRegion())
                 {
                     int regionRight = _config.RegionLeft + _config.RegionWidth;
@@ -309,25 +315,47 @@ namespace Screenshot_v3_0
                         return;
                     }
                     
-                    videoWidth = _config.RegionWidth;
-                    videoHeight = _config.RegionHeight;
+                    // 使用自定义区域，但应用分辨率比例缩放
+                    int originalWidth = _config.RegionWidth;
+                    int originalHeight = _config.RegionHeight;
+                    videoWidth = (int)(originalWidth * resolutionScale);
+                    videoHeight = (int)(originalHeight * resolutionScale);
                     offsetX = _config.RegionLeft;
                     offsetY = _config.RegionTop;
-                    WriteLine($"使用自定义区域录制: {videoWidth}x{videoHeight} @ 起点 ({offsetX}, {offsetY})");
+                    WriteLine($"使用自定义区域录制: 原始尺寸 {originalWidth}x{originalHeight}, 缩放后 {videoWidth}x{videoHeight} ({_config.VideoResolutionScale}%) @ 起点 ({offsetX}, {offsetY})");
                 }
                 else
                 {
-                    double resolutionScale = _config.VideoResolutionScale / 100.0;
+                    // 全屏录制，应用分辨率比例
                     videoWidth = (int)(screenWidthPixels * resolutionScale);
                     videoHeight = (int)(screenHeightPixels * resolutionScale);
+                    WriteLine($"全屏录制: 原始尺寸 {screenWidthPixels}x{screenHeightPixels}, 缩放后 {videoWidth}x{videoHeight} ({_config.VideoResolutionScale}%)");
                 }
 
                 // 创建视频编码器（不再需要 VideoRecorder，FFmpeg 直接录制）
                 _videoEncoder = new VideoEncoder(videoPath, _config);
 
-                // 初始化编码器（支持自定义区域偏移）
+                // 计算原始捕获尺寸（不应用分辨率比例）
+                int captureWidth = videoWidth;
+                int captureHeight = videoHeight;
+                if (HasValidCustomRegion())
+                {
+                    // 如果有自定义区域，捕获时使用原始区域尺寸
+                    captureWidth = _config.RegionWidth;
+                    captureHeight = _config.RegionHeight;
+                }
+                else
+                {
+                    // 全屏录制，捕获时使用全屏尺寸
+                    captureWidth = screenWidthPixels;
+                    captureHeight = screenHeightPixels;
+                }
+
+                // 初始化编码器（支持自定义区域偏移和分辨率缩放）
+                // videoWidth/videoHeight 是输出尺寸（应用分辨率比例后）
+                // captureWidth/captureHeight 是捕获尺寸（原始尺寸，不缩放）
                 _videoEncoder.Initialize(videoWidth, videoHeight, _config.VideoFrameRate, 
-                    _config.AudioSampleRate, 2, offsetX, offsetY);
+                    _config.AudioSampleRate, 2, offsetX, offsetY, captureWidth, captureHeight);
 
                 // 开始音频录制（使用 NAudio WasapiLoopbackCapture，无需虚拟声卡）
                 // 注意：无论是否有声音输出，都要录制音频（包括静音）
@@ -1494,7 +1522,8 @@ namespace Screenshot_v3_0
         {
             try
             {
-                if (!_isScreenshotEnabled) return;
+                // 只有在截图功能启用且正在录制时才处理
+                if (!_isScreenshotEnabled || !_isVideoRecording) return;
 
                 DateTime now = DateTime.Now;
                 TimeSpan elapsed = now - _lastScreenshotTime;
@@ -1683,6 +1712,13 @@ namespace Screenshot_v3_0
         {
             try
             {
+                // 只有在正在录制时才截图，避免停止录制后继续生成PPT/PDF
+                if (!_isVideoRecording)
+                {
+                    WriteLine("[截图] 跳过截图：录制已停止");
+                    return;
+                }
+
                 int width, height;
                 Bitmap bitmap;
                 
@@ -1753,6 +1789,9 @@ namespace Screenshot_v3_0
                     _screenshotCount++;
                     
                     // 如果启用了PPT或PDF生成，立即添加到PPT/PDF
+                    bool addedToPPT = false;
+                    bool addedToPDF = false;
+                    
                     if (_config.GeneratePPT || _config.GeneratePDF)
                     {
                         InitializePPTAndPDF(width, height);
@@ -1762,6 +1801,7 @@ namespace Screenshot_v3_0
                             try
                             {
                                 _pptGenerator.AddImage(filePath);
+                                addedToPPT = true;
                             }
                             catch (Exception ex)
                             {
@@ -1774,11 +1814,29 @@ namespace Screenshot_v3_0
                             try
                             {
                                 _pdfGenerator.AddImage(filePath);
+                                addedToPDF = true;
                             }
                             catch (Exception ex)
                             {
                                 WriteError($"添加图片到PDF失败", ex);
                             }
+                        }
+                    }
+                    
+                    // 如果图片已成功添加到PPT或PDF，删除JPG文件（因为已包含在PPT/PDF中）
+                    if ((_config.GeneratePPT && addedToPPT) || (_config.GeneratePDF && addedToPDF))
+                    {
+                        try
+                        {
+                            if (File.Exists(filePath))
+                            {
+                                File.Delete(filePath);
+                                WriteLine($"已删除JPG文件（已添加到PPT/PDF）: {filePath}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            WriteError($"删除JPG文件失败: {filePath}", ex);
                         }
                     }
                 }

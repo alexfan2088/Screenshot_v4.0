@@ -17,8 +17,10 @@ namespace Screenshot_v3_0
         private readonly RecordingConfig _config;
         private bool _isInitialized;
         private Process? _ffmpegProcess;
-        private int _videoWidth;
-        private int _videoHeight;
+        private int _videoWidth;      // 输出视频宽度（应用分辨率比例后）
+        private int _videoHeight;     // 输出视频高度（应用分辨率比例后）
+        private int _captureWidth;    // 捕获区域宽度（原始尺寸，不缩放）
+        private int _captureHeight;   // 捕获区域高度（原始尺寸，不缩放）
         private int _frameRate;
         private int _audioSampleRate;
         private readonly object _lockObject = new object();
@@ -41,14 +43,16 @@ namespace Screenshot_v3_0
         /// <summary>
         /// 初始化编码器
         /// </summary>
-        /// <param name="videoWidth">视频宽度</param>
-        /// <param name="videoHeight">视频高度</param>
+        /// <param name="videoWidth">输出视频宽度（应用分辨率比例后）</param>
+        /// <param name="videoHeight">输出视频高度（应用分辨率比例后）</param>
         /// <param name="frameRate">帧率</param>
         /// <param name="audioSampleRate">音频采样率</param>
         /// <param name="audioChannels">音频通道数</param>
         /// <param name="offsetX">屏幕偏移 X（左上角 X 坐标）</param>
         /// <param name="offsetY">屏幕偏移 Y（左上角 Y 坐标）</param>
-        public void Initialize(int videoWidth, int videoHeight, int frameRate, int audioSampleRate, int audioChannels, int offsetX = 0, int offsetY = 0)
+        /// <param name="captureWidth">捕获区域宽度（原始尺寸，不缩放，如果为0则使用videoWidth）</param>
+        /// <param name="captureHeight">捕获区域高度（原始尺寸，不缩放，如果为0则使用videoHeight）</param>
+        public void Initialize(int videoWidth, int videoHeight, int frameRate, int audioSampleRate, int audioChannels, int offsetX = 0, int offsetY = 0, int captureWidth = 0, int captureHeight = 0)
         {
             if (_isInitialized) return;
 
@@ -60,10 +64,16 @@ namespace Screenshot_v3_0
                 _audioSampleRate = audioSampleRate;
                 _offsetX = offsetX;
                 _offsetY = offsetY;
+                
+                // 如果未指定捕获尺寸，使用输出尺寸（100%分辨率时）
+                _captureWidth = captureWidth > 0 ? captureWidth : videoWidth;
+                _captureHeight = captureHeight > 0 ? captureHeight : videoHeight;
 
                 // 确保宽度和高度是 2 的倍数（H.264 要求）
                 _videoWidth = _videoWidth + (_videoWidth % 2);
                 _videoHeight = _videoHeight + (_videoHeight % 2);
+                _captureWidth = _captureWidth + (_captureWidth % 2);
+                _captureHeight = _captureHeight + (_captureHeight % 2);
 
                 // 查找 FFmpeg
                 _ffmpegPath = FindFfmpeg();
@@ -81,7 +91,14 @@ namespace Screenshot_v3_0
 
                 _isInitialized = true;
 
-                WriteLine($"视频编码器初始化: {_videoWidth}x{_videoHeight} @ {_frameRate}fps, 偏移: ({_offsetX}, {_offsetY})");
+                if (_captureWidth != _videoWidth || _captureHeight != _videoHeight)
+                {
+                    WriteLine($"视频编码器初始化: 捕获尺寸 {_captureWidth}x{_captureHeight}, 输出尺寸 {_videoWidth}x{_videoHeight} @ {_frameRate}fps, 偏移: ({_offsetX}, {_offsetY})");
+                }
+                else
+                {
+                    WriteLine($"视频编码器初始化: {_videoWidth}x{_videoHeight} @ {_frameRate}fps, 偏移: ({_offsetX}, {_offsetY})");
+                }
             }
             catch (Exception ex)
             {
@@ -190,6 +207,14 @@ namespace Screenshot_v3_0
         private string BuildFfmpegCommandWithAudio(int videoBitrateKbps, string audioDevice)
         {
             // 参考 Python 实现：使用 gdigrab 录制屏幕，dshow 录制系统音频
+            // 如果捕获尺寸和输出尺寸不同，使用scale滤镜缩放
+            
+            string scaleFilter = "";
+            if (_captureWidth != _videoWidth || _captureHeight != _videoHeight)
+            {
+                // 需要缩放：捕获原始尺寸，输出时缩放
+                scaleFilter = $"-vf scale={_videoWidth}:{_videoHeight} ";
+            }
             
             return $"-hide_banner -nostats -loglevel warning " +
                    $"-thread_queue_size 1024 " +
@@ -197,7 +222,7 @@ namespace Screenshot_v3_0
                    $"-framerate {_frameRate} " +
                    $"-offset_x {_offsetX} " +
                    $"-offset_y {_offsetY} " +
-                   $"-video_size {_videoWidth}x{_videoHeight} " +
+                   $"-video_size {_captureWidth}x{_captureHeight} " +
                    $"-use_wallclock_as_timestamps 1 " +
                    $"-i desktop " +
                    $"-thread_queue_size 1024 " +
@@ -205,6 +230,7 @@ namespace Screenshot_v3_0
                    $"-rtbufsize 256M " +
                    $"-use_wallclock_as_timestamps 1 " +
                    $"-i \"audio={audioDevice}\" " +
+                   $"{scaleFilter}" +
                    $"-c:v libx264 " +
                    $"-preset medium " +
                    $"-b:v {videoBitrateKbps}k " +
@@ -289,15 +315,25 @@ namespace Screenshot_v3_0
         private string BuildFfmpegCommandWithoutAudio(int videoBitrateKbps)
         {
             // 参考 Python 实现：使用 gdigrab 直接录制屏幕
+            // 如果捕获尺寸和输出尺寸不同，使用scale滤镜缩放
+            
+            string scaleFilter = "";
+            if (_captureWidth != _videoWidth || _captureHeight != _videoHeight)
+            {
+                // 需要缩放：捕获原始尺寸，输出时缩放
+                scaleFilter = $"-vf scale={_videoWidth}:{_videoHeight} ";
+            }
+            
             return $"-hide_banner -nostats -loglevel warning " +
                    $"-thread_queue_size 1024 " +
                    $"-f gdigrab " +
                    $"-framerate {_frameRate} " +
                    $"-offset_x {_offsetX} " +
                    $"-offset_y {_offsetY} " +
-                   $"-video_size {_videoWidth}x{_videoHeight} " +
+                   $"-video_size {_captureWidth}x{_captureHeight} " +
                    $"-use_wallclock_as_timestamps 1 " +
                    $"-i desktop " +
+                   $"{scaleFilter}" +
                    $"-c:v libx264 " +
                    $"-preset medium " +
                    $"-b:v {videoBitrateKbps}k " +
@@ -348,13 +384,21 @@ namespace Screenshot_v3_0
             
             WriteLine($"FFmpeg 音频管道格式: {audioFormat} ({_audioBitsPerSample}位, {(_audioIsFloat ? "浮点" : "整数")})");
             
+            // 如果捕获尺寸和输出尺寸不同，使用scale滤镜缩放
+            string scaleFilter = "";
+            if (_captureWidth != _videoWidth || _captureHeight != _videoHeight)
+            {
+                // 需要缩放：捕获原始尺寸，输出时缩放
+                scaleFilter = $"-vf scale={_videoWidth}:{_videoHeight} ";
+            }
+            
             return $"-hide_banner -nostats -loglevel warning " +
                    $"-thread_queue_size 1024 " +
                    $"-f gdigrab " +
                    $"-framerate {_frameRate} " +
                    $"-offset_x {_offsetX} " +
                    $"-offset_y {_offsetY} " +
-                   $"-video_size {_videoWidth}x{_videoHeight} " +
+                   $"-video_size {_captureWidth}x{_captureHeight} " +
                    $"-use_wallclock_as_timestamps 1 " +
                    $"-i desktop " +
                    $"-f {audioFormat} " +  // 根据实际格式设置
@@ -362,6 +406,7 @@ namespace Screenshot_v3_0
                    $"-ac 2 " +  // 立体声
                    $"-use_wallclock_as_timestamps 1 " +
                    $"-i pipe:0 " +  // 从标准输入读取音频
+                   $"{scaleFilter}" +
                    $"-c:v libx264 " +
                    $"-preset medium " +
                    $"-b:v {videoBitrateKbps}k " +
@@ -790,14 +835,11 @@ namespace Screenshot_v3_0
                             {
                                 if (File.Exists(tempOutput))
                                 {
-                                    // 备份原文件
-                                    string backupPath = videoPath + ".backup";
-                                    if (File.Exists(videoPath)) 
-                                    { 
-                                        File.Copy(videoPath, backupPath, true); 
+                                    // 直接替换原文件，不再创建备份
+                                    if (File.Exists(videoPath))
+                                    {
+                                        File.Delete(videoPath);
                                     }
-                                    
-                                    File.Delete(videoPath);
                                     File.Move(tempOutput, videoPath);
                                     
                                     var finalFileInfo = new FileInfo(videoPath);
