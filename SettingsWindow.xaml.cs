@@ -44,7 +44,6 @@ namespace Screenshot_v3_0
                 try
                 {
                     LoadConfig();
-                    UpdateEstimatedSize();
                 }
                 catch (Exception loadEx)
                 {
@@ -64,7 +63,6 @@ namespace Screenshot_v3_0
                 try
                 {
                     LoadConfig();
-                    UpdateEstimatedSize();
                 }
                 finally
                 {
@@ -78,6 +76,7 @@ namespace Screenshot_v3_0
                 MessageBox.Show($"加载设置失败：{ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
+
 
         private void LoadConfig()
         {
@@ -217,7 +216,6 @@ namespace Screenshot_v3_0
                 {
                     _config.VideoResolutionScale = value;
                 }
-                UpdateEstimatedSize();
             }
             catch (Exception ex)
             {
@@ -238,7 +236,6 @@ namespace Screenshot_v3_0
                     {
                         _config.VideoFrameRate = int.Parse(item.Tag.ToString()!);
                     }
-                    UpdateEstimatedSize();
                 }
             }
             catch (Exception ex)
@@ -260,7 +257,6 @@ namespace Screenshot_v3_0
                     {
                         _config.VideoBitrate = item.Tag.ToString()!;
                     }
-                    UpdateEstimatedSize();
                 }
             }
             catch (Exception ex)
@@ -282,7 +278,6 @@ namespace Screenshot_v3_0
                     {
                         _config.AudioSampleRate = int.Parse(item.Tag.ToString()!);
                     }
-                    UpdateEstimatedSize();
                 }
             }
             catch (Exception ex)
@@ -304,7 +299,6 @@ namespace Screenshot_v3_0
                     {
                         _config.AudioBitrate = int.Parse(item.Tag.ToString()!);
                     }
-                    UpdateEstimatedSize();
                 }
             }
             catch (Exception ex)
@@ -315,21 +309,6 @@ namespace Screenshot_v3_0
 
 
 
-        private void UpdateEstimatedSize()
-        {
-            try
-            {
-                if (TxtEstimatedSize != null && _config != null)
-                {
-                    double sizePerMinute = _config.EstimateFileSizePerMinute();
-                    TxtEstimatedSize.Text = $"约 {sizePerMinute:F1} MB/分钟";
-                }
-            }
-            catch (Exception ex)
-            {
-                WriteError($"更新预计文件大小失败", ex);
-            }
-        }
 
         private void BtnOK_Click(object sender, RoutedEventArgs e)
         {
