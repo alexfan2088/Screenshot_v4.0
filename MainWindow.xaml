@@ -25,7 +25,8 @@
           <Style TargetType="MenuItem">
             <Setter Property="Foreground" Value="Black"/>
             <Setter Property="Background" Value="White"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property
+              ="FontSize" Value="12"/>
             <Style.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="#E0E0E0"/>
@@ -244,7 +245,7 @@
       </StackPanel>
 
       <!-- 信息显示和窗口控制按钮（右半部分） -->
-      <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="-180,0,0,0">
+      <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="-60,0,0,0">
         <TextBlock x:Name="StatusBarInfo" FontSize="12" TextWrapping="NoWrap" VerticalAlignment="Center" Foreground="#D8F3DC" Height="20" Margin="0,0,8,0"/>
         <!-- 窗口控制按钮 -->
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">

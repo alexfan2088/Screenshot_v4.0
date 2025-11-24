@@ -904,13 +904,6 @@ namespace Screenshot_v3_0
                         return;
                     }
 
-                    // 配置信息（蓝色）
-                    string regionInfo = HasValidCustomRegion()
-                        ? $"{_config.RegionWidth}x{_config.RegionHeight}"
-                        : "全屏";
-                    string configText = $"{_config.VideoResolutionScale}% {_config.VideoFrameRate}fps | " +
-                                       $"{_config.AudioSampleRate / 1000}kHz {_config.AudioBitrate}kbps | {regionInfo}";
-
                     // 状态信息（绿色表示正常，橙色表示警告，红色表示错误）
                     string status = statusText ?? "就绪";
                     System.Windows.Media.Brush finalStatusColor = statusColor ?? System.Windows.Media.Brushes.Green;
@@ -928,16 +921,8 @@ namespace Screenshot_v3_0
                         }
                     }
 
-                    // 使用天蓝色和粉红色显示信息
+                    // 只显示状态信息
                     StatusBarInfo.Inlines.Clear();
-                    StatusBarInfo.Inlines.Add(new System.Windows.Documents.Run(configText) 
-                    { 
-                        Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(135, 206, 250)) // 天蓝色
-                    });
-                    StatusBarInfo.Inlines.Add(new System.Windows.Documents.Run(" | ") 
-                    { 
-                        Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(135, 206, 250)) // 天蓝色
-                    });
                     StatusBarInfo.Inlines.Add(new System.Windows.Documents.Run(status) 
                     { 
                         Foreground = finalStatusColor
