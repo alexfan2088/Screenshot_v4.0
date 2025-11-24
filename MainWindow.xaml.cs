@@ -134,6 +134,14 @@ namespace Screenshot_v3_0
                 {
                     UpdateLastScreenshot();
                 }
+                // 动态计算信息显示区域的宽度
+                UpdateStatusBarInfoWidth();
+            };
+            
+            // 窗口大小改变时，重新计算信息显示区域的宽度
+            this.SizeChanged += (s, e) =>
+            {
+                UpdateStatusBarInfoWidth();
             };
         }
 
@@ -659,6 +667,49 @@ namespace Screenshot_v3_0
         }
 
 
+        /// <summary>
+        /// 动态计算并设置信息显示区域的宽度
+        /// </summary>
+        private void UpdateStatusBarInfoWidth()
+        {
+            try
+            {
+                if (StatusBarInfo == null) return;
+                
+                // 等待布局完成
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        // 获取窗口实际宽度
+                        double windowWidth = this.ActualWidth;
+                        
+                        if (windowWidth <= 0) return;
+                        
+                        // 减去 Grid 的左右 Margin (8+8=16)
+                        double availableWidth = windowWidth - 16;
+                        
+                        // 根据窗口宽度动态计算信息显示区域的宽度
+                        // 使用窗口宽度的约 35-40% 作为信息显示区域
+                        // 对于 1920px 屏幕的 80% (1536px)，信息区域约为 500-600px
+                        // 对于较小屏幕，按比例调整，但最小不少于 200px
+                        double statusBarWidth = Math.Max(200, availableWidth * 0.35);
+                        
+                        // 设置宽度
+                        StatusBarInfo.Width = statusBarWidth;
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteError($"延迟更新信息显示区域宽度失败", ex);
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
+            }
+            catch (Exception ex)
+            {
+                WriteError($"更新信息显示区域宽度失败", ex);
+            }
+        }
+
         private void UpdateConfigDisplay()
         {
             UpdateStatusDisplay(null);
@@ -763,7 +814,6 @@ namespace Screenshot_v3_0
                 if (!_isScreenshotEnabled)
                 {
                     string statusText = $"屏幕变化率: -- | " +
-                                       $"录制间隔: {_config.ScreenshotInterval}秒 | " +
                                        $"截图数量: {_screenshotCount} (请启用截图功能){timeInfo}";
                     UpdateStatusDisplayWithScroll(statusText, new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 192, 203))); // 粉红色
                     return;
@@ -775,7 +825,6 @@ namespace Screenshot_v3_0
                 
                 // 始终显示实时的屏幕变化率（比较当前画面和上一次检查时的画面）
                 string mainStatusText = $"屏幕变化率: {_currentScreenChangeRate:F2}% | " +
-                                       $"录制间隔: {_config.ScreenshotInterval}秒 | " +
                                        $"截图数量: {_screenshotCount}{timeInfo}";
                 
                 // 使用Inlines来设置不同颜色的文本
