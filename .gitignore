@@ -28,4 +28,25 @@ packages/
 D:\ScreenshotV3.0\
 C:\ScreenshotV3.0\
 
+# Office 临时文件
+~$*.docx
+~$*.doc
+~$*.xlsx
+~$*.xls
+~$*.pptx
+~$*.ppt
+
+# 图片目录
+image/
+
+# Cursor IDE 配置
+.cursorignore
+
+# 本地配置和脚本（可选，根据需要取消注释）
+# run.ps1
+# *.ps1
+
+# 文档文件（可选，根据需要取消注释）
+# *.md
+# *.docx
 
