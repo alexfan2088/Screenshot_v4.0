@@ -133,6 +133,7 @@ namespace Screenshot_v3_0
             UpdateLogMenuItems();
             UpdatePPTAndPDFMenuItems();
             UpdateOutputModeMenuItems();
+            UpdateVideoMergeModeMenuItems();
             
             // 初始化界面上的设置输入框
             InitializeSettingsControls();
@@ -427,58 +428,63 @@ namespace Screenshot_v3_0
                 }
                 else if (_outputMode == OutputMode.AudioOnly || _outputMode == OutputMode.AudioAndVideo || _outputMode == OutputMode.VideoOnly)
                 {
-                    // 开始音频录制（使用 NAudio WasapiLoopbackCapture，无需虚拟声卡）
-                    // 注意：无论是否有声音输出，都要录制音频（包括静音）
-                    // AudioRecorder.Start() 会创建与目标同名的临时 wav 文件
-                    // VideoOnly 模式也需要录制音频，以确保生成的视频包含声音
+                    // 准备音频录制路径
                     var audioOutputPath = Path.Combine(_workDir, $"audio_{timestamp}.m4a"); // 最终输出路径（不会被使用）
                     var expectedAudioPath = Path.Combine(_workDir, $"audio_{timestamp}.wav"); // AudioRecorder 实际创建的文件
                     _currentAudioPath = expectedAudioPath; // 保存音频文件路径
-                    
+
                     WriteLine("开始音频录制（NAudio WasapiLoopbackCapture，即使静音也会录制）");
                     WriteLine("预期WAV文件");
-                    
-                    // 连接音频数据事件，实现边录边合成（需要视频时都连接）
-                    if (_outputMode == OutputMode.AudioAndVideo || _outputMode == OutputMode.VideoOnly)
+
+                    // ★★ 关键改动：改变启动顺序，确保音视频同步 ★★
+                    // 1. 先初始化 AudioRecorder（获取音频格式信息，但不开始录制）
+                    _audioRecorder.Initialize();
+
+                    // 2. 设置音频格式并启动 FFmpeg（管道模式下，先让管道准备好）
+                    if (_outputMode == OutputMode.VideoOnly || _outputMode == OutputMode.AudioAndVideo)
                     {
+                        if (_videoEncoder != null)
+                        {
+                            // 设置音频格式参数
+                            _videoEncoder.SetAudioFormat(
+                                _audioRecorder.BitsPerSample,
+                                _audioRecorder.IsFloatFormat,
+                                _audioRecorder.SampleRate
+                            );
+
+                            // 启动 FFmpeg 录制（管道模式下，音频管道会在这里准备好）
+                            bool useAudioPipe = _config.VideoMergeMode == 1;
+                            string mergeModeName = useAudioPipe ? "边录边合（管道模式）" : "后期合并模式";
+                            WriteLine($"启动 FFmpeg 录制视频（{mergeModeName}）...");
+                            _videoEncoder.Start(useAudioPipe);
+
+                            // ★★ 关键：立即发送初始静音数据，填补 FFmpeg 启动到 NAudio 启动之间的空白
+                            if (useAudioPipe)
+                            {
+                                // 发送约2秒的初始静音，确保音频流从视频开始时就有数据
+                                _videoEncoder.SendInitialSilence(2000);
+                            }
+                        }
+
+                        // 3. 连接音频数据事件（FFmpeg 已启动，管道已准备好）
                         _audioRecorder.AudioSampleAvailable += OnAudioSampleAvailable;
                     }
-                    
+
+                    // 4. 最后启动 NAudio 录制（此时管道已准备好，音频数据不会丢失）
                     _audioRecorder.Start(audioOutputPath);
-                    
-                    // 等待音频录制启动
-                    System.Threading.Thread.Sleep(300);
                 }
                 else
                 {
                     _currentAudioPath = null;
                 }
-                
-                // 启动 FFmpeg 录制视频（仅在需要视频时）
+
+                // 启动 FFmpeg 录制视频（仅在 AudioOnly 或 None 模式下需要单独处理）
                 if (_outputMode == OutputMode.None)
                 {
                     // 不生成音视频模式，跳过视频录制
                     WriteLine("不生成音视频模式：跳过视频录制");
                 }
-                else if (_outputMode == OutputMode.VideoOnly || _outputMode == OutputMode.AudioAndVideo)
-                {
-                    // 设置音频格式参数（从 NAudio 获取，用于管道模式）
-                    if (_videoEncoder != null && _audioRecorder != null)
-                    {
-                        _videoEncoder.SetAudioFormat(
-                            _audioRecorder.BitsPerSample,
-                            _audioRecorder.IsFloatFormat,
-                            _audioRecorder.SampleRate
-                        );
-                    }
-
-                    // 启动 FFmpeg 录制
-                    // ★ 改用后期合并模式，避免管道同步问题导致时长不一致
-                    // 视频单独录制，音频单独录制到 WAV，最后合并
-                    bool useAudioPipe = false;
-                    WriteLine($"启动 FFmpeg 录制视频（后期合并模式）...");
-                    _videoEncoder?.Start(useAudioPipe);
-                }
+                // 注意：VideoOnly 和 AudioAndVideo 模式的 FFmpeg 启动已在上面处理
 
                 _isVideoRecording = true;
                 // 更新按钮状态
@@ -542,86 +548,84 @@ namespace Screenshot_v3_0
             {
                 if (!_isVideoRecording) return;
 
+                // ★ 立即设置录制状态为 false，防止截图定时器继续生成 JPG
+                _isVideoRecording = false;
+
                 // 先禁用按钮，防止重复点击
                 BtnStopVideo.IsEnabled = false;
-                
+
                 _isStoppingRecording = true;
                 _statusUpdateTimer?.Stop();
                 _statusUpdateTimer = null;
-                
+
                 // 停止录制时长检查定时器
                 _durationCheckTimer?.Stop();
                 _durationCheckTimer = null;
-                
+
+                // ★ 立即停止截图定时器
+                if (_screenshotTimer != null && _screenshotTimer.IsEnabled)
+                {
+                    _screenshotTimer.Stop();
+                    WriteLine("截图定时器已停止");
+                }
+
                 // 立即更新状态显示
                 _currentOperation = "正在停止录制...";
                 UpdateStatusDisplayWithScroll(_currentOperation, new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 192, 203))); // 粉红色
 
-                // 在后台线程执行停止操作，避免阻塞 UI
-                ThreadPool.QueueUserWorkItem(_ =>
+                WriteLine("准备启动停止任务...");
+
+                // ★ 先立即关闭管道、断开事件并停止音频录制，确保音视频同时停止
+                if (_outputMode == OutputMode.VideoOnly || _outputMode == OutputMode.AudioAndVideo)
+                {
+                    WriteLine("立即关闭 FFmpeg 音频管道...");
+                    _audioRecorder.AudioSampleAvailable -= OnAudioSampleAvailable;
+                    _videoEncoder?.RequestStop();
+
+                    // ★★ 关键：立即停止 NAudio 录制，确保音频和视频时长一致
+                    WriteLine("立即停止音频录制...");
+                    _audioRecorder.Stop();
+                    WriteLine("已关闭音频管道，FFmpeg 将自动完成编码...");
+                }
+
+                // 使用专用线程而不是线程池，避免线程池饥饿
+                var stopThread = new Thread(() =>
                 {
                     try
                     {
                         WriteLine($"========== 停止录制 ==========");
                         WriteLine($"输出模式: {_outputMode}");
-                        
+
                         List<string> generatedFiles = new List<string>();
-                        
-                        // 第一步：停止所有录制（但不立即完成编码）
-                        // 停止截图定时器
-                        Dispatcher.Invoke(() =>
-                        {
-                            if (_screenshotTimer != null && _screenshotTimer.IsEnabled)
-                            {
-                                _screenshotTimer.Stop();
-                                WriteLine("截图定时器已停止");
-                            }
-                        });
-                        
-                        // 停止音频录制（如果需要）
+
+                        // 注意：音频录制已在 UI 线程停止，这里只需要查找音频文件
                         string? audioFilePathForVideo = null;
                         if (_outputMode == OutputMode.VideoOnly || _outputMode == OutputMode.AudioAndVideo)
                         {
-                            // 断开音频事件连接（避免继续写入数据）
-                            _audioRecorder.AudioSampleAvailable -= OnAudioSampleAvailable;
-                            
-                            // 停止音频录制
-                            WriteLine("停止音频录制");
-                            _audioRecorder.Stop();
-                            
-                            // 等待音频文件写入完成
-                            System.Threading.Thread.Sleep(1000);
-                            
-                            // 查找临时音频文件（用于后续合并到视频）
+                            // 查找临时音频文件（用于后期合成模式）
                             var tempAudioFiles = Directory.GetFiles(_workDir, "audio_*.wav");
                             if (tempAudioFiles.Length == 0)
                             {
                                 tempAudioFiles = Directory.GetFiles(_workDir, "temp_audio_*.wav");
                             }
-                            
+
                             if (tempAudioFiles.Length > 0)
                             {
                                 var latestAudioFile = tempAudioFiles.OrderByDescending(f => File.GetCreationTime(f)).First();
                                 var audioFileInfo = new FileInfo(latestAudioFile);
-                                
+
                                 if (audioFileInfo.Length > 0)
                                 {
                                     audioFilePathForVideo = latestAudioFile;
                                     _videoEncoder?.SetAudioFile(latestAudioFile);
                                 }
                             }
-                            
-                            // 发送停止信号给 FFmpeg（但不等待完成，稍后再完成编码）
-                            _videoEncoder?.RequestStop();
                         }
                         else if (_outputMode == OutputMode.AudioOnly)
                         {
                             // 只生成音频模式：停止音频录制
                             WriteLine("停止音频录制");
                             _audioRecorder.Stop();
-                            
-                            // 等待音频文件写入完成
-                            System.Threading.Thread.Sleep(1000);
                         }
                         
                         // 第二步：生成PPT文件
@@ -731,15 +735,7 @@ namespace Screenshot_v3_0
                         Dispatcher.Invoke(() =>
                         {
                             _videoEncoder = null;
-                            _isVideoRecording = false;
-                            
-                            // 停止截图定时器
-                            if (_screenshotTimer != null && _screenshotTimer.IsEnabled)
-                            {
-                                _screenshotTimer.Stop();
-                                WriteLine("截图定时器已停止");
-                            }
-                            
+
                             // 更新按钮状态（考虑区域选择情况）
                             UpdateStartButtonState();
                             
@@ -779,6 +775,8 @@ namespace Screenshot_v3_0
                         });
                     }
                 });
+                stopThread.IsBackground = true;
+                stopThread.Start();
             }
             catch (Exception ex)
             {
@@ -1843,6 +1841,58 @@ namespace Screenshot_v3_0
             }
         }
 
+        private void MenuMergeRealtime_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                _config.VideoMergeMode = 1; // 边录边合
+                UpdateVideoMergeModeMenuItems();
+                _config.Save(_configPath);
+                WriteLine("视频合成方式：边录边合（管道模式，停止后秒级完成）");
+                UpdateStatusDisplay("合成方式：边录边合");
+            }
+            catch (Exception ex)
+            {
+                WriteError($"设置视频合成方式失败", ex);
+                UpdateStatusDisplay($"设置视频合成方式失败：{ex.Message}");
+            }
+        }
+
+        private void MenuMergePostProcess_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                _config.VideoMergeMode = 0; // 后期合成
+                UpdateVideoMergeModeMenuItems();
+                _config.Save(_configPath);
+                WriteLine("视频合成方式：后期合成（长视频需等待）");
+                UpdateStatusDisplay("合成方式：后期合成");
+            }
+            catch (Exception ex)
+            {
+                WriteError($"设置视频合成方式失败", ex);
+                UpdateStatusDisplay($"设置视频合成方式失败：{ex.Message}");
+            }
+        }
+
+        private void UpdateVideoMergeModeMenuItems()
+        {
+            try
+            {
+                if (MenuMergeRealtime != null)
+                {
+                    MenuMergeRealtime.IsChecked = _config.VideoMergeMode == 1;
+                }
+                if (MenuMergePostProcess != null)
+                {
+                    MenuMergePostProcess.IsChecked = _config.VideoMergeMode == 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteError($"更新视频合成方式菜单状态失败", ex);
+            }
+        }
 
         private void ScreenshotTimer_Tick(object? sender, EventArgs e)
         {

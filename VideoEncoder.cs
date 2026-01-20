@@ -3,6 +3,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
 using static Screenshot_v3_0.Logger;
 
 namespace Screenshot_v3_0
@@ -33,6 +34,12 @@ namespace Screenshot_v3_0
         private Stream? _audioInputStream; // 音频管道流（用于实时合成）
         private int _audioBitsPerSample;   // 音频位深度（用于确定 FFmpeg 输入格式）
         private bool _audioIsFloat;        // 音频是否为浮点格式
+
+        // ★ 音频队列架构：解决管道写入阻塞导致的死锁问题
+        private ConcurrentQueue<byte[]>? _audioQueue;  // 音频数据队列
+        private Thread? _audioWriterThread;            // 独立的音频写入线程
+        private volatile bool _audioWriterRunning;     // 写入线程运行标志
+        private ManualResetEventSlim? _audioDataAvailable; // 有数据可写的信号
 
         public VideoEncoder(string outputPath, RecordingConfig config)
         {
@@ -176,11 +183,23 @@ namespace Screenshot_v3_0
                     throw new Exception("无法启动 FFmpeg 进程");
                 }
 
-                // 如果使用音频管道模式，获取管道流
+                // 如果使用音频管道模式，获取管道流并启动写入线程
                 if (_hasAudioInVideo && _ffmpegProcess.StandardInput != null)
                 {
                     _audioInputStream = _ffmpegProcess.StandardInput.BaseStream;
-                    WriteLine("✓ 音频管道已就绪，等待 NAudio 数据写入");
+
+                    // ★ 初始化音频队列和写入线程
+                    _audioQueue = new ConcurrentQueue<byte[]>();
+                    _audioDataAvailable = new ManualResetEventSlim(false);
+                    _audioWriterRunning = true;
+                    _audioWriterThread = new Thread(AudioWriterThreadProc)
+                    {
+                        Name = "AudioPipeWriter",
+                        IsBackground = true
+                    };
+                    _audioWriterThread.Start();
+
+                    WriteLine("✓ 音频管道已就绪，写入线程已启动");
                 }
 
                 // 异步读取 FFmpeg 错误输出，避免缓冲区堵塞
@@ -390,20 +409,22 @@ namespace Screenshot_v3_0
                 scaleFilter = $"-vf scale={_videoWidth}:{_videoHeight} ";
             }
 
+            // ★ 使用 -shortest 让 FFmpeg 在音频结束时停止
+            // 关键：在关闭管道前发送额外静音，确保视频缓冲区的帧都被编码
             return $"-hide_banner -nostats -loglevel warning " +
-                   "-thread_queue_size 1024 " +
+                   "-thread_queue_size 4096 " +
                    "-f gdigrab " +
                    $"-framerate {_frameRate} " +
                    $"-offset_x {_offsetX} " +
                    $"-offset_y {_offsetY} " +
                    $"-video_size {_captureWidth}x{_captureHeight} " +
-                   "-use_wallclock_as_timestamps 1 " +
                    "-i desktop " +
+                   "-thread_queue_size 4096 " +
                    $"-f {audioFormat} " +
                    $"-ar {_audioSampleRate} " +
                    "-ac 2 " +
-                   "-use_wallclock_as_timestamps 1 " +
                    "-i pipe:0 " +
+                   "-map 0:v:0 -map 1:a:0 " +
                    scaleFilter +
                    "-c:v libx264 " +
                    "-preset medium " +
@@ -454,28 +475,144 @@ namespace Screenshot_v3_0
         }
 
         /// <summary>
-        /// 写入音频数据到 FFmpeg 管道（用于实时合成，当前默认不启用）
+        /// 发送初始静音数据到管道（填补 FFmpeg 启动到 NAudio 启动之间的空白）
         /// </summary>
-        public void WriteAudioData(byte[] buffer, int bytesRecorded)
+        /// <param name="durationMs">静音时长（毫秒）</param>
+        public void SendInitialSilence(int durationMs)
         {
-            if (!_hasAudioInVideo || _audioInputStream == null || _ffmpegProcess == null || _ffmpegProcess.HasExited)
+            if (!_hasAudioInVideo || _audioQueue == null)
                 return;
 
             try
             {
-                lock (_lockObject)
-                {
-                    if (_audioInputStream != null && !_ffmpegProcess.HasExited)
-                    {
-                        _audioInputStream.Write(buffer, 0, bytesRecorded);
-                        _audioInputStream.Flush();
-                    }
-                }
+                // 计算静音字节数
+                int bytesPerSample = _audioBitsPerSample / 8;
+                int silenceBytes = (_audioSampleRate * 2 * bytesPerSample * durationMs) / 1000;
+
+                byte[] silenceBuffer = new byte[silenceBytes];
+                // 静音数据保持全0
+
+                WriteLine($"发送初始静音: {durationMs}ms ({silenceBytes} 字节)");
+
+                // 直接入队，由写入线程发送
+                _audioQueue.Enqueue(silenceBuffer);
+                _audioDataAvailable?.Set();
             }
             catch (Exception ex)
             {
-                WriteWarning($"写入音频数据到 FFmpeg 管道失败: {ex.Message}");
+                WriteWarning($"发送初始静音失败: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 写入音频数据到队列（由独立线程异步写入管道）
+        /// ★ 此方法永不阻塞，立即返回，避免死锁
+        /// </summary>
+        public void WriteAudioData(byte[] buffer, int bytesRecorded)
+        {
+            // 检查停止标志
+            if (_hasRequestedStop || !_audioWriterRunning)
+                return;
+
+            if (!_hasAudioInVideo || _audioQueue == null || bytesRecorded <= 0)
+                return;
+
+            try
+            {
+                // ★ 复制数据并放入队列（永不阻塞）
+                byte[] dataCopy = new byte[bytesRecorded];
+                Buffer.BlockCopy(buffer, 0, dataCopy, 0, bytesRecorded);
+                _audioQueue.Enqueue(dataCopy);
+
+                // 通知写入线程有数据可写
+                _audioDataAvailable?.Set();
+            }
+            catch
+            {
+                // 忽略入队失败
+            }
+        }
+
+        /// <summary>
+        /// 音频写入线程：从队列取数据写入管道
+        /// ★ 独立线程，不会阻塞调用者
+        /// </summary>
+        private void AudioWriterThreadProc()
+        {
+            WriteLine("音频写入线程已启动");
+
+            try
+            {
+                while (_audioWriterRunning)
+                {
+                    try
+                    {
+                        // 等待数据信号（最多等待100ms，然后检查是否应该退出）
+                        if (_audioDataAvailable != null)
+                        {
+                            _audioDataAvailable.Wait(100);
+                            _audioDataAvailable.Reset();
+                        }
+
+                        // ★ 再次检查停止标志
+                        if (!_audioWriterRunning)
+                            break;
+
+                        // 获取当前的管道引用（可能被 RequestStop 设置为 null）
+                        var stream = _audioInputStream;
+                        var process = _ffmpegProcess;
+
+                        // ★ 如果管道已关闭，立即退出
+                        if (stream == null || process == null || process.HasExited)
+                            break;
+
+                        // 从队列取出所有数据并写入管道
+                        while (_audioQueue != null && _audioQueue.TryDequeue(out byte[]? data))
+                        {
+                            // ★ 每次写入前都检查停止标志和管道状态
+                            if (!_audioWriterRunning || _audioInputStream == null)
+                                break;
+
+                            if (data != null)
+                            {
+                                try
+                                {
+                                    stream.Write(data, 0, data.Length);
+                                }
+                                catch (Exception)
+                                {
+                                    // 管道可能已关闭，退出循环
+                                    break;
+                                }
+                            }
+                        }
+
+                        // 定期刷新管道（只在正常运行时）
+                        if (_audioWriterRunning && _audioInputStream != null)
+                        {
+                            try
+                            {
+                                stream.Flush();
+                            }
+                            catch { }
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // 忽略异常，继续检查停止标志
+                    }
+                }
+            }
+            finally
+            {
+                // ★ 清空队列，避免内存泄漏
+                if (_audioQueue != null)
+                {
+                    while (_audioQueue.TryDequeue(out _)) { }
+                }
+            }
+
+            WriteLine("音频写入线程已退出");
         }
 
         /// <summary>
@@ -488,46 +625,79 @@ namespace Screenshot_v3_0
 
             try
             {
-                Process? process;
-                lock (_lockObject)
-                {
-                    process = _ffmpegProcess;
-                }
+                // ★ 设置停止标志，阻止新数据入队
+                _hasRequestedStop = true;
+                WriteLine("RequestStop: 设置停止标志");
 
-                if (process != null && !process.HasExited && !_hasRequestedStop)
+                var process = _ffmpegProcess;
+
+                if (process != null && !process.HasExited)
                 {
                     try
                     {
-                        if (_hasAudioInVideo && _audioInputStream != null)
+                        if (_hasAudioInVideo)
                         {
-                            // ★ 管道模式：关闭音频管道流来通知 FFmpeg 停止
-                            // FFmpeg 从 stdin 读取音频数据，收到 EOF 后会自动停止
-                            try
+                            // ★ 管道模式：先停止写入线程
+                            WriteLine("RequestStop: 停止音频写入线程...");
+                            _audioWriterRunning = false;
+                            _audioDataAvailable?.Set(); // 唤醒写入线程
+
+                            // 等待写入线程退出（最多1秒）
+                            if (_audioWriterThread != null && _audioWriterThread.IsAlive)
                             {
-                                _audioInputStream.Flush();
-                                _audioInputStream.Close();
+                                _audioWriterThread.Join(1000);
                             }
-                            catch { }
+
+                            // ★★ 关键：发送额外的静音数据（约15秒），确保视频缓冲区的帧都被编码
+                            var audioStream = _audioInputStream;
+                            if (audioStream != null)
+                            {
+                                try
+                                {
+                                    // 计算15秒静音的字节数（采样率 * 通道数 * 每样本字节数 * 秒数）
+                                    // 32位浮点 = 4字节/样本，2通道，48000采样率
+                                    int bytesPerSample = _audioBitsPerSample / 8;
+                                    int silenceDurationMs = 15000; // 15秒缓冲（确保足够长）
+                                    int silenceBytes = (_audioSampleRate * 2 * bytesPerSample * silenceDurationMs) / 1000;
+
+                                    byte[] silenceBuffer = new byte[silenceBytes];
+                                    // 静音数据保持全0
+
+                                    WriteLine($"RequestStop: 发送 {silenceDurationMs}ms 静音缓冲 ({silenceBytes} 字节)...");
+                                    audioStream.Write(silenceBuffer, 0, silenceBuffer.Length);
+                                    audioStream.Flush();
+                                    WriteLine("RequestStop: 静音缓冲已发送");
+                                }
+                                catch (Exception ex)
+                                {
+                                    WriteWarning($"发送静音缓冲失败: {ex.Message}");
+                                }
+                            }
+
+                            // 关闭音频管道（-shortest 会让 FFmpeg 在音频结束时停止）
                             _audioInputStream = null;
-                            WriteLine("已关闭音频管道，FFmpeg 将自动完成编码...");
+                            if (audioStream != null)
+                            {
+                                try
+                                {
+                                    audioStream.Close();
+                                    WriteLine("RequestStop: 已关闭音频管道，FFmpeg 将自动完成编码...");
+                                }
+                                catch { }
+                            }
                         }
                         else
                         {
                             // 非管道模式：发送 'q' 命令
                             process.StandardInput?.WriteLine("q");
                             process.StandardInput?.Flush();
-                            WriteLine("已发送停止信号给 FFmpeg（等待完成中...）");
+                            WriteLine("RequestStop: 已发送停止信号给 FFmpeg");
                         }
-                        _hasRequestedStop = true;
                     }
                     catch (Exception ex)
                     {
                         WriteWarning($"发送停止信号给 FFmpeg 失败: {ex.Message}");
                     }
-                }
-                else if (_hasRequestedStop)
-                {
-                    WriteLine("停止信号已发送，正在等待 FFmpeg 退出...");
                 }
             }
             catch (Exception ex)
