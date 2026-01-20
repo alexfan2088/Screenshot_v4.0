@@ -44,6 +44,9 @@ namespace Screenshot_v3_0
         // 区域显示参数
         public bool ShowRegionOverlay { get; set; } = false; // 显示上次记录的矩形框，默认不显示
 
+        // 视频合成方式：0=后期合成，1=边录边合（管道模式）
+        public int VideoMergeMode { get; set; } = 1; // 默认边录边合，停止后秒级完成
+
         /// <summary>
         /// 获取视频码率（Mbps）
         /// </summary>

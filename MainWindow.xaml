@@ -86,6 +86,10 @@
             <MenuItem Header="只生成视频文件" x:Name="MenuOutputVideoOnly" IsCheckable="True" IsChecked="False" StaysOpenOnClick="True" Click="MenuOutputVideoOnly_Click"/>
             <MenuItem Header="生成音频+视频文件" x:Name="MenuOutputAudioAndVideo" IsCheckable="True" IsChecked="True" StaysOpenOnClick="True" Click="MenuOutputAudioAndVideo_Click"/>
           </MenuItem>
+          <MenuItem Header="视频合成方式">
+            <MenuItem Header="边录边合（推荐，秒级完成）" x:Name="MenuMergeRealtime" IsCheckable="True" IsChecked="True" StaysOpenOnClick="True" Click="MenuMergeRealtime_Click"/>
+            <MenuItem Header="后期合成（长视频需等待）" x:Name="MenuMergePostProcess" IsCheckable="True" IsChecked="False" StaysOpenOnClick="True" Click="MenuMergePostProcess_Click"/>
+          </MenuItem>
           <Separator/>
           <MenuItem Header="    保留JPG文件" x:Name="MenuScreenshot" IsCheckable="True" IsChecked="True" StaysOpenOnClick="True" Click="MenuScreenshot_Click" ToolTip="控制是否保留截图JPG文件（截图功能始终启用，用于生成PPT）" Style="{StaticResource MenuGeneratePPTStyle}"/>
           <MenuItem Header="    生成PPT" x:Name="MenuGeneratePPT" IsCheckable="True" IsChecked="True" IsEnabled="False" StaysOpenOnClick="True" Click="MenuGeneratePPT_Click" Style="{StaticResource MenuGeneratePPTStyle}"/>
