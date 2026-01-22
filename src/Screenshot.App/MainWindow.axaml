@@ -1,0 +1,86 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Screenshot.App.ViewModels"
+        mc:Ignorable="d"
+        x:Class="Screenshot.App.MainWindow"
+        Title="Screenshot 4.0"
+        Width="1280" Height="860"
+        MinWidth="1024" MinHeight="720"
+        WindowState="Maximized">
+  <Design.DataContext>
+    <vm:MainViewModel />
+  </Design.DataContext>
+
+  <Grid>
+    <Border Background="#F5F2EA">
+      <Grid Margin="28" RowDefinitions="Auto,*">
+        <Grid Row="0" ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="6">
+            <TextBlock Text="Screenshot 4.0" FontSize="30" FontWeight="SemiBold" Foreground="#101820" />
+            <TextBlock Text="跨平台录制 · 系统音频优先" Opacity="0.75" Foreground="#1F2A44" />
+          </StackPanel>
+          <Border Grid.Column="1" Background="#0F1A2B" CornerRadius="18" Padding="12,6" VerticalAlignment="Center">
+            <TextBlock Text="mac 优先开发中" Foreground="#F5F2EA" FontSize="12" />
+          </Border>
+        </Grid>
+
+        <Grid Row="1" Margin="0,20,0,0" ColumnDefinitions="2*,3*" RowDefinitions="Auto,Auto">
+          <Border Grid.Row="0" Grid.Column="0" Margin="0,0,18,18" Background="#FFFFFF" CornerRadius="18" Padding="18">
+            <StackPanel Spacing="12">
+              <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Left">
+                <Button Content="开始录制" Command="{Binding StartCommand}" Background="#0E7C86" Foreground="#FFFFFF" Padding="14,8" />
+                <Button Content="停止录制" Command="{Binding StopCommand}" Background="#D94B4B" Foreground="#FFFFFF" Padding="14,8" />
+                <Button Content="系统设置" Click="OnOpenSettingsClick" />
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Text="时长(分钟)" VerticalAlignment="Center" />
+                <TextBox Width="80" Text="{Binding RecordingDurationMinutes}" />
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <CheckBox Content="自定义区域(Windows)" IsChecked="{Binding UseCustomRegion}" IsEnabled="{Binding IsEditingUnlocked}" />
+                <TextBlock Text="左" VerticalAlignment="Center" />
+                <TextBox Width="60" Text="{Binding RegionLeft}" IsEnabled="{Binding IsEditingUnlocked}" />
+                <TextBlock Text="上" VerticalAlignment="Center" />
+                <TextBox Width="60" Text="{Binding RegionTop}" IsEnabled="{Binding IsEditingUnlocked}" />
+                <TextBlock Text="宽" VerticalAlignment="Center" />
+                <TextBox Width="60" Text="{Binding RegionWidth}" IsEnabled="{Binding IsEditingUnlocked}" />
+                <TextBlock Text="高" VerticalAlignment="Center" />
+                <TextBox Width="60" Text="{Binding RegionHeight}" IsEnabled="{Binding IsEditingUnlocked}" />
+                <Button Content="选择区域" Click="OnSelectRegionClick" IsEnabled="{Binding IsEditingUnlocked}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Grid.Row="0" Grid.Column="1" Margin="18,0,0,18" Background="#101820" CornerRadius="18" Padding="18">
+            <StackPanel Spacing="10">
+              <TextBlock Text="实时状态" Foreground="#E5E5E5" FontWeight="SemiBold" />
+              <TextBlock Text="{Binding StatusMessage}" Foreground="#F9F6EE" FontSize="16" />
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="{Binding SessionDirectoryStatus}" Foreground="#F6EFEA" Opacity="0.85" />
+                <Button Content="复制路径" Command="{Binding CopySessionPathCommand}" IsEnabled="{Binding HasSessionDirectory}" />
+                <Button Content="打开目录" Command="{Binding OpenSessionDirectoryCommand}" IsEnabled="{Binding HasSessionDirectory}" />
+              </StackPanel>
+              <TextBlock Text="{Binding LastOutputSummary}" Foreground="#B0BCC9" />
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button Content="打开输出目录" Command="{Binding OpenOutputDirectoryCommand}" />
+                <Button Content="打开日志目录" Command="{Binding OpenLogDirectoryCommand}" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#FFFFFF" CornerRadius="18" Padding="18">
+            <StackPanel Spacing="8">
+              <TextBlock Text="提示" FontWeight="SemiBold" />
+              <TextBlock Text="系统设置在右上“系统设置”按钮中。" />
+              <TextBlock Text="首次录制会触发屏幕录制权限。" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

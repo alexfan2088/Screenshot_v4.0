@@ -1,0 +1,70 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Screenshot.App.ViewModels"
+        x:Class="Screenshot.App.SettingsWindow"
+        Title="系统设置"
+        Width="900" Height="720" MinWidth="720" MinHeight="600">
+  <Design.DataContext>
+    <vm:MainViewModel />
+  </Design.DataContext>
+
+  <Grid Background="#F5F2EA">
+    <Border Margin="20" Background="#FFFFFF" CornerRadius="16" Padding="16">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12">
+          <TextBlock Text="录制模式" FontWeight="SemiBold" />
+          <ComboBox ItemsSource="{Binding OutputModes}" SelectedItem="{Binding SelectedOutputMode}" IsEnabled="{Binding IsEditingUnlocked}" />
+
+          <TextBlock Text="系统音频来源" FontWeight="SemiBold" />
+          <ComboBox ItemsSource="{Binding AudioCaptureModes}" SelectedItem="{Binding SelectedAudioCaptureMode}" IsEnabled="{Binding IsEditingUnlocked}" />
+
+          <TextBlock Text="输出目录" FontWeight="SemiBold" />
+          <TextBox Text="{Binding OutputDirectory}" IsEnabled="{Binding IsEditingUnlocked}" />
+
+          <TextBlock Text="会话名称" FontWeight="SemiBold" />
+          <TextBox Text="{Binding SessionName}" IsEnabled="{Binding IsEditingUnlocked}" />
+
+          <TextBlock Text="会话目录预览" FontWeight="SemiBold" />
+          <TextBox Text="{Binding SessionDirectoryPreview}" IsReadOnly="True" />
+
+          <TextBlock Text="mac Helper 路径" FontWeight="SemiBold" />
+          <TextBox Text="{Binding MacHelperPath}" IsReadOnly="True" />
+
+          <TextBlock Text="日志目录" FontWeight="SemiBold" />
+          <TextBox Text="{Binding LogDirectory}" IsReadOnly="True" />
+
+          <TextBlock Text="设置文件路径" FontWeight="SemiBold" />
+          <TextBox Text="{Binding SettingsPathDisplay}" IsReadOnly="True" />
+
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Content="打开设置目录" Command="{Binding OpenSettingsDirectoryCommand}" />
+            <Button Content="打开输出目录" Command="{Binding OpenOutputDirectoryCommand}" />
+            <Button Content="打开日志目录" Command="{Binding OpenLogDirectoryCommand}" />
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <CheckBox Content="生成PPT" IsChecked="{Binding GeneratePpt}" IsEnabled="{Binding IsEditingUnlocked}" />
+            <CheckBox Content="生成PDF" IsChecked="{Binding GeneratePdf}" IsEnabled="{Binding IsEditingUnlocked}" />
+            <CheckBox Content="保留JPG" IsChecked="{Binding KeepJpgFiles}" IsEnabled="{Binding IsEditingUnlocked}" />
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <CheckBox Content="启用日志" IsChecked="{Binding LogEnabled}" IsEnabled="{Binding IsEditingUnlocked}" />
+            <CheckBox Content="日志叠加" IsChecked="{Binding LogAppendMode}" IsEnabled="{Binding IsEditingUnlocked}" />
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <TextBlock Text="截图间隔(秒)" VerticalAlignment="Center" />
+            <TextBox Width="80" Text="{Binding ScreenshotInterval}" IsEnabled="{Binding IsEditingUnlocked}" />
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button Content="恢复默认设置" Command="{Binding ResetSettingsCommand}" IsEnabled="{Binding IsEditingUnlocked}" />
+            <Button Content="导出设置" Click="OnExportSettingsClick" IsEnabled="{Binding IsEditingUnlocked}" />
+            <Button Content="导入设置" Click="OnImportSettingsClick" IsEnabled="{Binding IsEditingUnlocked}" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+  </Grid>
+</Window>
