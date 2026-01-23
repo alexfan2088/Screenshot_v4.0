@@ -236,6 +236,11 @@ namespace Screenshot.App.ViewModels
 
             if (OperatingSystem.IsMacOS() && !string.IsNullOrWhiteSpace(_macHelperPath))
             {
+                var baseDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (_macHelperPath.Contains("@executable_path", StringComparison.Ordinal))
+                {
+                    _macHelperPath = _macHelperPath.Replace("@executable_path", baseDir, StringComparison.Ordinal);
+                }
                 _macHelperPath = Path.GetFullPath(_macHelperPath, AppContext.BaseDirectory);
             }
 
@@ -307,6 +312,7 @@ namespace Screenshot.App.ViewModels
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
                 _freezeSessionPreview = false;
                 StatusMessage = $"启动失败: {ex.Message}";
+                Logger.WriteError("Start recording failed", ex);
                 await DisposeBackendAsync();
                 await DisposeDocPipelineAsync();
                 _autoStopCts?.Cancel();

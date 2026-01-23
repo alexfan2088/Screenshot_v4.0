@@ -40,17 +40,21 @@
                 <TextBox Width="80" Text="{Binding RecordingDurationMinutes}" />
               </StackPanel>
 
-              <StackPanel Orientation="Horizontal" Spacing="12">
-                <CheckBox Content="自定义区域(Windows)" IsChecked="{Binding UseCustomRegion}" IsEnabled="{Binding IsEditingUnlocked}" />
-                <TextBlock Text="左" VerticalAlignment="Center" />
-                <TextBox Width="60" Text="{Binding RegionLeft}" IsEnabled="{Binding IsEditingUnlocked}" />
-                <TextBlock Text="上" VerticalAlignment="Center" />
-                <TextBox Width="60" Text="{Binding RegionTop}" IsEnabled="{Binding IsEditingUnlocked}" />
-                <TextBlock Text="宽" VerticalAlignment="Center" />
-                <TextBox Width="60" Text="{Binding RegionWidth}" IsEnabled="{Binding IsEditingUnlocked}" />
-                <TextBlock Text="高" VerticalAlignment="Center" />
-                <TextBox Width="60" Text="{Binding RegionHeight}" IsEnabled="{Binding IsEditingUnlocked}" />
-                <Button Content="选择区域" Click="OnSelectRegionClick" IsEnabled="{Binding IsEditingUnlocked}" />
+              <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <CheckBox Content="自定义区域(Windows)" IsChecked="{Binding UseCustomRegion}" IsEnabled="{Binding IsEditingUnlocked}" />
+                  <TextBlock Text="左" VerticalAlignment="Center" />
+                  <TextBox Width="70" Text="{Binding RegionLeft}" IsEnabled="{Binding IsEditingUnlocked}" />
+                  <TextBlock Text="上" VerticalAlignment="Center" />
+                  <TextBox Width="70" Text="{Binding RegionTop}" IsEnabled="{Binding IsEditingUnlocked}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <TextBlock Text="宽" VerticalAlignment="Center" />
+                  <TextBox Width="70" Text="{Binding RegionWidth}" IsEnabled="{Binding IsEditingUnlocked}" />
+                  <TextBlock Text="高" VerticalAlignment="Center" />
+                  <TextBox Width="70" Text="{Binding RegionHeight}" IsEnabled="{Binding IsEditingUnlocked}" />
+                  <Button Content="选择区域" Click="OnSelectRegionClick" IsEnabled="{Binding IsEditingUnlocked}" />
+                </StackPanel>
               </StackPanel>
             </StackPanel>
           </Border>
