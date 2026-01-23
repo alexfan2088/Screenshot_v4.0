@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using Avalonia.Threading;
 using Screenshot.Core;
 using Screenshot.App.Services;
 using Screenshot.Platform.Mac;
@@ -27,6 +28,10 @@ namespace Screenshot.App.ViewModels
         private DocumentCapturePipeline? _docPipeline;
         private string? _lastPptPath;
         private string? _lastPdfPath;
+        private string? _lastVideoPath;
+        private string? _lastAudioPath;
+        private string? _lastLogPath;
+        private string? _lastSessionDirectory;
         private DateTime _recordingStart;
         private string? _sessionBaseName;
         private string _sessionName;
@@ -36,6 +41,7 @@ namespace Screenshot.App.ViewModels
         private bool _generatePdf = true;
         private bool _keepJpgFiles = true;
         private string _screenshotIntervalText = "10";
+        private string _screenChangeRateText = "11.12";
         private bool _logEnabled = true;
         private bool _logAppendMode = false;
         private bool _useCustomRegion = false;
@@ -44,6 +50,12 @@ namespace Screenshot.App.ViewModels
         private string _regionWidthText = "0";
         private string _regionHeightText = "0";
         private string _recordingDurationMinutesText = "60";
+        private int _videoMergeMode = 1;
+        private double _currentChangeRate;
+        private int _captureCount;
+        private int _nextCheckSeconds;
+        private string _remainingTimeText = "--";
+        private DispatcherTimer? _statusTimer;
         private readonly string _settingsPath;
         private string _settingsPathDisplay;
         private CancellationTokenSource? _autoStopCts;
@@ -148,10 +160,22 @@ namespace Screenshot.App.ViewModels
             set => SetField(ref _screenshotIntervalText, value);
         }
 
+        public string ScreenChangeRate
+        {
+            get => _screenChangeRateText;
+            set => SetField(ref _screenChangeRateText, value);
+        }
+
         public string RecordingDurationMinutes
         {
             get => _recordingDurationMinutesText;
             set => SetField(ref _recordingDurationMinutesText, value);
+        }
+
+        public int VideoMergeMode
+        {
+            get => _videoMergeMode;
+            set => SetField(ref _videoMergeMode, value);
         }
 
         public bool UseCustomRegion
@@ -196,11 +220,169 @@ namespace Screenshot.App.ViewModels
             set => SetField(ref _logAppendMode, value);
         }
 
+        public bool LogDisabled
+        {
+            get => !LogEnabled;
+            set
+            {
+                if (value)
+                {
+                    LogEnabled = false;
+                }
+            }
+        }
+
+        public bool LogOverwriteMode
+        {
+            get => !LogAppendMode;
+            set
+            {
+                if (value)
+                {
+                    LogAppendMode = false;
+                }
+            }
+        }
+
+        public bool IsOutputModeNone
+        {
+            get => SelectedOutputMode == OutputMode.None;
+            set
+            {
+                if (value)
+                {
+                    SelectedOutputMode = OutputMode.None;
+                }
+            }
+        }
+
+        public bool IsOutputModeAudioOnly
+        {
+            get => SelectedOutputMode == OutputMode.AudioOnly;
+            set
+            {
+                if (value)
+                {
+                    SelectedOutputMode = OutputMode.AudioOnly;
+                }
+            }
+        }
+
+        public bool IsOutputModeVideoOnly
+        {
+            get => SelectedOutputMode == OutputMode.VideoOnly;
+            set
+            {
+                if (value)
+                {
+                    SelectedOutputMode = OutputMode.VideoOnly;
+                }
+            }
+        }
+
+        public bool IsOutputModeAudioAndVideo
+        {
+            get => SelectedOutputMode == OutputMode.AudioAndVideo;
+            set
+            {
+                if (value)
+                {
+                    SelectedOutputMode = OutputMode.AudioAndVideo;
+                }
+            }
+        }
+
+        public bool IsVideoMergeLive
+        {
+            get => VideoMergeMode == 1;
+            set
+            {
+                if (value)
+                {
+                    VideoMergeMode = 1;
+                }
+            }
+        }
+
+        public bool IsVideoMergePost
+        {
+            get => VideoMergeMode == 0;
+            set
+            {
+                if (value)
+                {
+                    VideoMergeMode = 0;
+                }
+            }
+        }
+
+        public string OutputModeNoneLabel => SelectedOutputMode == OutputMode.None ? "✓ 不生成音视频文件" : "不生成音视频文件";
+        public string OutputModeAudioOnlyLabel => SelectedOutputMode == OutputMode.AudioOnly ? "✓ 只生成音频文件" : "只生成音频文件";
+        public string OutputModeVideoOnlyLabel => SelectedOutputMode == OutputMode.VideoOnly ? "✓ 只生成视频文件" : "只生成视频文件";
+        public string OutputModeAudioAndVideoLabel => SelectedOutputMode == OutputMode.AudioAndVideo ? "✓ 生成音频+视频文件" : "生成音频+视频文件";
+        public string VideoMergeLiveLabel => VideoMergeMode == 1 ? "✓ 边录边合（推荐，秒级完成）" : "边录边合（推荐，秒级完成）";
+        public string VideoMergePostLabel => VideoMergeMode == 0 ? "✓ 后期合成（长视频需等待）" : "后期合成（长视频需等待）";
+        public string KeepJpgLabel => KeepJpgFiles ? "✓ 保留JPG文件" : "保留JPG文件";
+        public string GeneratePptLabel => GeneratePpt ? "✓ 生成PPT" : "生成PPT";
+        public string GeneratePdfLabel => GeneratePdf ? "✓ 生成PDF" : "生成PDF";
+        public string LogEnabledLabel => LogEnabled ? "✓ 输出日志" : "输出日志";
+        public string LogDisabledLabel => LogEnabled ? "不输出日志" : "✓ 不输出日志";
+        public string LogOverwriteLabel => LogAppendMode ? "日志文件覆盖" : "✓ 日志文件覆盖";
+        public string LogAppendLabel => LogAppendMode ? "✓ 日志文件追加" : "日志文件追加";
+
         public string SettingsPathDisplay
         {
             get => _settingsPathDisplay;
             private set => SetField(ref _settingsPathDisplay, value);
         }
+
+        public string CurrentChangeRateText => $"{Clamp(_currentChangeRate, 0, 99.99):0.00}%";
+        public string CaptureCountText => $"{Clamp(_captureCount, 0, 9999)}";
+        public string RemainingTimeText => _remainingTimeText;
+        public string NextCheckSecondsText => $"{Clamp(_nextCheckSeconds, 1, 9999)}秒后";
+
+        public string? LastVideoPath
+        {
+            get => _lastVideoPath;
+            private set => SetField(ref _lastVideoPath, value);
+        }
+
+        public string? LastAudioPath
+        {
+            get => _lastAudioPath;
+            private set => SetField(ref _lastAudioPath, value);
+        }
+
+        public string? LastPptPath
+        {
+            get => _lastPptPath;
+            private set => SetField(ref _lastPptPath, value);
+        }
+
+        public string? LastPdfPath
+        {
+            get => _lastPdfPath;
+            private set => SetField(ref _lastPdfPath, value);
+        }
+
+        public string? LastLogPath
+        {
+            get => _lastLogPath;
+            private set => SetField(ref _lastLogPath, value);
+        }
+
+        public string? LastSessionDirectory
+        {
+            get => _lastSessionDirectory;
+            private set => SetField(ref _lastSessionDirectory, value);
+        }
+
+        public bool HasLastVideo => HasFile(LastVideoPath);
+        public bool HasLastAudio => HasFile(LastAudioPath);
+        public bool HasLastPpt => HasFile(LastPptPath);
+        public bool HasLastPdf => HasFile(LastPdfPath);
+        public bool HasLastLog => HasFile(LastLogPath);
+        public bool HasLastSessionDirectory => !string.IsNullOrWhiteSpace(LastSessionDirectory) && Directory.Exists(LastSessionDirectory);
 
         public ICommand StartCommand { get; }
         public ICommand StopCommand { get; }
@@ -210,6 +392,25 @@ namespace Screenshot.App.ViewModels
         public ICommand OpenLogDirectoryCommand { get; }
         public ICommand ResetSettingsCommand { get; }
         public ICommand OpenSettingsDirectoryCommand { get; }
+        public ICommand OpenLastVideoCommand { get; }
+        public ICommand OpenLastAudioCommand { get; }
+        public ICommand OpenLastPptCommand { get; }
+        public ICommand OpenLastPdfCommand { get; }
+        public ICommand OpenLastLogCommand { get; }
+        public ICommand OpenLastSessionDirectoryCommand { get; }
+        public ICommand SetOutputModeNoneCommand { get; }
+        public ICommand SetOutputModeAudioOnlyCommand { get; }
+        public ICommand SetOutputModeVideoOnlyCommand { get; }
+        public ICommand SetOutputModeAudioAndVideoCommand { get; }
+        public ICommand SetVideoMergeLiveCommand { get; }
+        public ICommand SetVideoMergePostCommand { get; }
+        public ICommand ToggleKeepJpgCommand { get; }
+        public ICommand ToggleGeneratePptCommand { get; }
+        public ICommand ToggleGeneratePdfCommand { get; }
+        public ICommand SetLogEnabledCommand { get; }
+        public ICommand SetLogDisabledCommand { get; }
+        public ICommand SetLogOverwriteCommand { get; }
+        public ICommand SetLogAppendCommand { get; }
 
         public MainViewModel()
         {
@@ -256,6 +457,25 @@ namespace Screenshot.App.ViewModels
             OpenLogDirectoryCommand = new DelegateCommand(OpenLogDirectory, () => Directory.Exists(LogDirectory));
             ResetSettingsCommand = new DelegateCommand(ResetSettings, () => !_isRecording);
             OpenSettingsDirectoryCommand = new DelegateCommand(OpenSettingsDirectory, () => Directory.Exists(Path.GetDirectoryName(_settingsPath) ?? string.Empty));
+            OpenLastVideoCommand = new DelegateCommand(OpenLastVideo, () => HasLastVideo);
+            OpenLastAudioCommand = new DelegateCommand(OpenLastAudio, () => HasLastAudio);
+            OpenLastPptCommand = new DelegateCommand(OpenLastPpt, () => HasLastPpt);
+            OpenLastPdfCommand = new DelegateCommand(OpenLastPdf, () => HasLastPdf);
+            OpenLastLogCommand = new DelegateCommand(OpenLastLogFile, () => HasLastLog);
+            OpenLastSessionDirectoryCommand = new DelegateCommand(OpenLastSessionDirectory, () => HasLastSessionDirectory);
+            SetOutputModeNoneCommand = new DelegateCommand(() => SelectedOutputMode = OutputMode.None);
+            SetOutputModeAudioOnlyCommand = new DelegateCommand(() => SelectedOutputMode = OutputMode.AudioOnly);
+            SetOutputModeVideoOnlyCommand = new DelegateCommand(() => SelectedOutputMode = OutputMode.VideoOnly);
+            SetOutputModeAudioAndVideoCommand = new DelegateCommand(() => SelectedOutputMode = OutputMode.AudioAndVideo);
+            SetVideoMergeLiveCommand = new DelegateCommand(() => VideoMergeMode = 1);
+            SetVideoMergePostCommand = new DelegateCommand(() => VideoMergeMode = 0);
+            ToggleKeepJpgCommand = new DelegateCommand(() => KeepJpgFiles = !KeepJpgFiles);
+            ToggleGeneratePptCommand = new DelegateCommand(() => GeneratePpt = !GeneratePpt);
+            ToggleGeneratePdfCommand = new DelegateCommand(() => GeneratePdf = !GeneratePdf);
+            SetLogEnabledCommand = new DelegateCommand(() => LogEnabled = true);
+            SetLogDisabledCommand = new DelegateCommand(() => LogEnabled = false);
+            SetLogOverwriteCommand = new DelegateCommand(() => LogAppendMode = false);
+            SetLogAppendCommand = new DelegateCommand(() => LogAppendMode = true);
         }
 
         private async System.Threading.Tasks.Task StartRecordingAsync()
@@ -278,6 +498,10 @@ namespace Screenshot.App.ViewModels
                 GeneratePDF = GeneratePdf,
                 KeepJpgFiles = KeepJpgFiles,
                 ScreenshotInterval = ParseIntervalSeconds(),
+                ScreenChangeRate = ParseScreenChangeRate(),
+                VideoMergeMode = VideoMergeMode,
+                LogEnabled = LogEnabled ? 1 : 0,
+                LogFileMode = LogAppendMode ? 1 : 0,
                 UseCustomRegion = UseCustomRegion,
                 RegionLeft = ParseInt(RegionLeft),
                 RegionTop = ParseInt(RegionTop),
@@ -298,11 +522,14 @@ namespace Screenshot.App.ViewModels
 
             try
             {
+                _recordingStart = DateTime.UtcNow;
                 _docPipeline = new DocumentCapturePipeline(config, sessionDir, _sessionBaseName);
+                _docPipeline.CaptureCompleted += OnCaptureCompleted;
+                InitializeStatusInfo();
+                StartStatusTimer();
                 await _docPipeline.StartAsync(System.Threading.CancellationToken.None);
 
                 _backend = CreateBackend();
-                _recordingStart = DateTime.UtcNow;
                 await _backend.StartAsync(options, System.Threading.CancellationToken.None);
                 StartAutoStopTimer();
             }
@@ -314,6 +541,11 @@ namespace Screenshot.App.ViewModels
                 StatusMessage = $"启动失败: {ex.Message}";
                 Logger.WriteError("Start recording failed", ex);
                 await DisposeBackendAsync();
+                StopStatusTimer();
+                if (_docPipeline != null)
+                {
+                    _docPipeline.CaptureCompleted -= OnCaptureCompleted;
+                }
                 await DisposeDocPipelineAsync();
                 _autoStopCts?.Cancel();
             }
@@ -332,16 +564,17 @@ namespace Screenshot.App.ViewModels
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
             StatusMessage = "停止中...";
             RaiseCommandStates();
+            var currentSessionDir = SessionDirectoryStatus;
 
+            RecordingSessionResult? result = null;
             if (_backend != null)
             {
-                var result = await _backend.StopAsync(System.Threading.CancellationToken.None);
+                result = await _backend.StopAsync(System.Threading.CancellationToken.None);
                 await DisposeBackendAsync();
                 var duration = DateTime.UtcNow - _recordingStart;
                 StatusMessage = $"已停止（{duration:hh\\:mm\\:ss}）";
-                var ppt = _lastPptPath ?? "-";
-                var pdf = _lastPdfPath ?? "-";
-                LastOutputSummary = $"mp4: {result.VideoPath ?? "-"} | wav: {result.AudioPath ?? "-"} | ppt: {ppt} | pdf: {pdf}";
+                LastVideoPath = result.VideoPath;
+                LastAudioPath = result.AudioPath;
             }
             else
             {
@@ -350,11 +583,23 @@ namespace Screenshot.App.ViewModels
             _freezeSessionPreview = false;
             if (_docPipeline != null)
             {
-                _lastPptPath = _docPipeline.PptPath;
-                _lastPdfPath = _docPipeline.PdfPath;
+                _docPipeline.CaptureCompleted -= OnCaptureCompleted;
+                LastPptPath = _docPipeline.PptPath;
+                LastPdfPath = _docPipeline.PdfPath;
                 await _docPipeline.StopAsync(System.Threading.CancellationToken.None);
                 await DisposeDocPipelineAsync();
             }
+            StopStatusTimer();
+            _nextCheckSeconds = 0;
+            _remainingTimeText = "--";
+            UpdateStatusInfo();
+            LastLogPath = Logger.LogFilePath;
+            LastSessionDirectory = currentSessionDir;
+            var ppt = LastPptPath ?? "-";
+            var pdf = LastPdfPath ?? "-";
+            var mp4 = LastVideoPath ?? "-";
+            var wav = LastAudioPath ?? "-";
+            LastOutputSummary = $"mp4: {mp4} | wav: {wav} | ppt: {ppt} | pdf: {pdf}";
             SessionDirectoryStatus = "";
             RaiseCommandStates();
             _stopInProgress = false;
@@ -372,6 +617,12 @@ namespace Screenshot.App.ViewModels
             if (OpenLogDirectoryCommand is DelegateCommand openLog) openLog.RaiseCanExecuteChanged();
             if (ResetSettingsCommand is DelegateCommand reset) reset.RaiseCanExecuteChanged();
             if (OpenSettingsDirectoryCommand is DelegateCommand openSettings) openSettings.RaiseCanExecuteChanged();
+            if (OpenLastVideoCommand is DelegateCommand lastVideo) lastVideo.RaiseCanExecuteChanged();
+            if (OpenLastAudioCommand is DelegateCommand lastAudio) lastAudio.RaiseCanExecuteChanged();
+            if (OpenLastPptCommand is DelegateCommand lastPpt) lastPpt.RaiseCanExecuteChanged();
+            if (OpenLastPdfCommand is DelegateCommand lastPdf) lastPdf.RaiseCanExecuteChanged();
+            if (OpenLastLogCommand is DelegateCommand lastLog) lastLog.RaiseCanExecuteChanged();
+            if (OpenLastSessionDirectoryCommand is DelegateCommand lastSession) lastSession.RaiseCanExecuteChanged();
         }
 
         private async System.Threading.Tasks.Task DisposeBackendAsync()
@@ -388,14 +639,97 @@ namespace Screenshot.App.ViewModels
             _docPipeline = null;
         }
 
+        private void InitializeStatusInfo()
+        {
+            _currentChangeRate = ParseScreenChangeRate();
+            _captureCount = 0;
+            _nextCheckSeconds = ParseIntervalSeconds();
+            UpdateRemainingTime();
+            UpdateStatusInfo();
+        }
+
+        private void StartStatusTimer()
+        {
+            _statusTimer?.Stop();
+            _statusTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(1)
+            };
+            _statusTimer.Tick += OnStatusTimerTick;
+            _statusTimer.Start();
+        }
+
+        private void StopStatusTimer()
+        {
+            if (_statusTimer == null) return;
+            _statusTimer.Stop();
+            _statusTimer.Tick -= OnStatusTimerTick;
+            _statusTimer = null;
+        }
+
+        private void OnStatusTimerTick(object? sender, EventArgs e)
+        {
+            if (!_isRecording) return;
+            if (_nextCheckSeconds > 0)
+            {
+                _nextCheckSeconds--;
+            }
+            UpdateRemainingTime();
+            UpdateStatusInfo();
+        }
+
+        private void OnCaptureCompleted(int count)
+        {
+            _captureCount = count;
+            _nextCheckSeconds = ParseIntervalSeconds();
+            _currentChangeRate = ParseScreenChangeRate();
+            UpdateRemainingTime();
+            UpdateStatusInfo();
+        }
+
+        private void UpdateRemainingTime()
+        {
+            var totalMinutes = ParseInt(RecordingDurationMinutes);
+            if (totalMinutes <= 0)
+            {
+                _remainingTimeText = "--";
+                return;
+            }
+
+            var elapsed = DateTime.UtcNow - _recordingStart;
+            var totalSeconds = Math.Max(0, (int)TimeSpan.FromMinutes(totalMinutes).TotalSeconds - (int)elapsed.TotalSeconds);
+            var minutes = totalSeconds / 60;
+            var seconds = totalSeconds % 60;
+            _remainingTimeText = $"{Clamp(minutes, 0, 999)}分{Clamp(seconds, 0, 59)}秒";
+        }
+
+        private void UpdateStatusInfo()
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentChangeRateText)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CaptureCountText)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RemainingTimeText)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NextCheckSecondsText)));
+        }
+
         private int ParseIntervalSeconds()
         {
             if (int.TryParse(ScreenshotInterval, out var seconds))
             {
-                return Math.Max(1, seconds);
+                return Clamp(seconds, 1, 9999);
             }
 
-            return 10;
+            return 1;
+        }
+
+        private double ParseScreenChangeRate()
+        {
+            if (double.TryParse(ScreenChangeRate, out var rate))
+            {
+                if (rate < 0) return 0;
+                if (rate > 99.99) return 99.99;
+                return rate;
+            }
+            return 0;
         }
 
         private static int ParseInt(string value)
@@ -474,17 +808,97 @@ namespace Screenshot.App.ViewModels
                 if (OpenOutputDirectoryCommand is DelegateCommand openOutput) openOutput.RaiseCanExecuteChanged();
                 if (OpenLogDirectoryCommand is DelegateCommand openLog) openLog.RaiseCanExecuteChanged();
             }
+            if (name == nameof(LogDirectory))
+            {
+                Logger.SetLogDirectory(LogDirectory);
+            }
             if (name == nameof(SettingsPathDisplay))
             {
                 if (OpenSettingsDirectoryCommand is DelegateCommand openSettings) openSettings.RaiseCanExecuteChanged();
             }
+            if (name == nameof(ScreenChangeRate))
+            {
+                _currentChangeRate = ParseScreenChangeRate();
+                UpdateStatusInfo();
+            }
+            if (name == nameof(RecordingDurationMinutes))
+            {
+                UpdateRemainingTime();
+                UpdateStatusInfo();
+            }
+            if (name == nameof(SelectedOutputMode))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsOutputModeNone)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsOutputModeAudioOnly)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsOutputModeVideoOnly)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsOutputModeAudioAndVideo)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeNoneLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioOnlyLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeVideoOnlyLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioAndVideoLabel)));
+            }
+            if (name == nameof(VideoMergeMode))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsVideoMergeLive)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsVideoMergePost)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergeLiveLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergePostLabel)));
+            }
+            if (name == nameof(GeneratePpt))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePptLabel)));
+            }
+            if (name == nameof(GeneratePdf))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdfLabel)));
+            }
+            if (name == nameof(KeepJpgFiles))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgLabel)));
+            }
             if (name == nameof(LogEnabled))
             {
                 Logger.Enabled = LogEnabled;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogDisabled)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogEnabledLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogDisabledLabel)));
             }
             if (name == nameof(LogAppendMode))
             {
                 Logger.SetLogFileMode(LogAppendMode ? 1 : 0);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogOverwriteMode)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogOverwriteLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogAppendLabel)));
+            }
+            if (name == nameof(LastVideoPath))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasLastVideo)));
+                if (OpenLastVideoCommand is DelegateCommand lastVideo) lastVideo.RaiseCanExecuteChanged();
+            }
+            if (name == nameof(LastAudioPath))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasLastAudio)));
+                if (OpenLastAudioCommand is DelegateCommand lastAudio) lastAudio.RaiseCanExecuteChanged();
+            }
+            if (name == nameof(LastPptPath))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasLastPpt)));
+                if (OpenLastPptCommand is DelegateCommand lastPpt) lastPpt.RaiseCanExecuteChanged();
+            }
+            if (name == nameof(LastPdfPath))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasLastPdf)));
+                if (OpenLastPdfCommand is DelegateCommand lastPdf) lastPdf.RaiseCanExecuteChanged();
+            }
+            if (name == nameof(LastLogPath))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasLastLog)));
+                if (OpenLastLogCommand is DelegateCommand lastLog) lastLog.RaiseCanExecuteChanged();
+            }
+            if (name == nameof(LastSessionDirectory))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasLastSessionDirectory)));
+                if (OpenLastSessionDirectoryCommand is DelegateCommand lastSession) lastSession.RaiseCanExecuteChanged();
             }
             if (ShouldPersistSetting(name))
             {
@@ -509,6 +923,7 @@ namespace Screenshot.App.ViewModels
             _generatePdf = defaults.GeneratePdf;
             _keepJpgFiles = defaults.KeepJpgFiles;
             _screenshotIntervalText = defaults.ScreenshotInterval;
+            _screenChangeRateText = defaults.ScreenChangeRate;
             _logEnabled = defaults.LogEnabled;
             _logAppendMode = defaults.LogAppendMode;
             _selectedOutputMode = defaults.SelectedOutputMode;
@@ -519,6 +934,7 @@ namespace Screenshot.App.ViewModels
             _regionWidthText = defaults.RegionWidth;
             _regionHeightText = defaults.RegionHeight;
             _recordingDurationMinutesText = defaults.RecordingDurationMinutes;
+            _videoMergeMode = defaults.VideoMergeMode;
 
             Logger.SetLogDirectory(_logDirectory);
             Logger.Enabled = _logEnabled;
@@ -531,6 +947,7 @@ namespace Screenshot.App.ViewModels
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdf)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgFiles)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenshotInterval)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenChangeRate)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogEnabled)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogAppendMode)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedOutputMode)));
@@ -541,6 +958,33 @@ namespace Screenshot.App.ViewModels
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionWidth)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionHeight)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RecordingDurationMinutes)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergeMode)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeNoneLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioOnlyLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeVideoOnlyLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioAndVideoLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergeLiveLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergePostLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePptLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdfLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogEnabledLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogDisabledLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogOverwriteLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogAppendLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeNoneLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioOnlyLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeVideoOnlyLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioAndVideoLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergeLiveLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergePostLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePptLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdfLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogEnabledLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogDisabledLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogOverwriteLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogAppendLabel)));
 
             RefreshSessionDirectoryPreview();
             SaveSettings();
@@ -554,17 +998,20 @@ namespace Screenshot.App.ViewModels
                 var settings = new AppSettings
                 {
                     OutputDirectory = OutputDirectory,
+                    LogDirectory = LogDirectory,
                     SessionName = SessionName,
                     GeneratePpt = GeneratePpt,
                     GeneratePdf = GeneratePdf,
-                KeepJpgFiles = KeepJpgFiles,
-                ScreenshotInterval = ScreenshotInterval,
-                LogEnabled = LogEnabled,
-                LogAppendMode = LogAppendMode,
-                SelectedOutputMode = SelectedOutputMode,
-                SelectedAudioCaptureMode = SelectedAudioCaptureMode,
-                RecordingDurationMinutes = RecordingDurationMinutes
-            };
+                    KeepJpgFiles = KeepJpgFiles,
+                    ScreenshotInterval = ScreenshotInterval,
+                    ScreenChangeRate = ScreenChangeRate,
+                    LogEnabled = LogEnabled,
+                    LogAppendMode = LogAppendMode,
+                    SelectedOutputMode = SelectedOutputMode,
+                    SelectedAudioCaptureMode = SelectedAudioCaptureMode,
+                    RecordingDurationMinutes = RecordingDurationMinutes,
+                    VideoMergeMode = VideoMergeMode
+                };
                 settings.Save(path);
                 StatusMessage = $"已导出设置: {path}";
                 SettingsPathDisplay = _settingsPath;
@@ -591,11 +1038,23 @@ namespace Screenshot.App.ViewModels
             }
         }
 
+        public void UpdateLogDirectory(string path)
+        {
+            if (_isRecording) return;
+            if (string.IsNullOrWhiteSpace(path)) return;
+            SetField(ref _logDirectory, path, nameof(LogDirectory));
+            StatusMessage = $"已更新日志目录: {path}";
+        }
+
         private void ApplySettings(AppSettings settings)
         {
             if (!string.IsNullOrWhiteSpace(settings.OutputDirectory))
             {
                 _outputDirectory = settings.OutputDirectory;
+            }
+            if (!string.IsNullOrWhiteSpace(settings.LogDirectory))
+            {
+                _logDirectory = settings.LogDirectory;
             }
             if (!string.IsNullOrWhiteSpace(settings.SessionName))
             {
@@ -606,6 +1065,7 @@ namespace Screenshot.App.ViewModels
             _generatePdf = settings.GeneratePdf;
             _keepJpgFiles = settings.KeepJpgFiles;
             _screenshotIntervalText = settings.ScreenshotInterval;
+            _screenChangeRateText = settings.ScreenChangeRate;
             _logEnabled = settings.LogEnabled;
             _logAppendMode = settings.LogAppendMode;
             _selectedOutputMode = settings.SelectedOutputMode;
@@ -622,16 +1082,19 @@ namespace Screenshot.App.ViewModels
             _regionWidthText = settings.RegionWidth;
             _regionHeightText = settings.RegionHeight;
             _recordingDurationMinutesText = settings.RecordingDurationMinutes;
+            _videoMergeMode = settings.VideoMergeMode;
 
             Logger.Enabled = _logEnabled;
             Logger.SetLogFileMode(_logAppendMode ? 1 : 0);
 
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputDirectory)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogDirectory)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SessionName)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePpt)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdf)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgFiles)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenshotInterval)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenChangeRate)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogEnabled)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogAppendMode)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedOutputMode)));
@@ -642,6 +1105,7 @@ namespace Screenshot.App.ViewModels
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionWidth)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionHeight)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RecordingDurationMinutes)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergeMode)));
 
             RefreshSessionDirectoryPreview();
             SaveSettings();
@@ -654,6 +1118,10 @@ namespace Screenshot.App.ViewModels
             {
                 _outputDirectory = settings.OutputDirectory;
             }
+            if (!string.IsNullOrWhiteSpace(settings.LogDirectory))
+            {
+                _logDirectory = settings.LogDirectory;
+            }
             if (!string.IsNullOrWhiteSpace(settings.SessionName))
             {
                 _sessionName = settings.SessionName;
@@ -663,10 +1131,12 @@ namespace Screenshot.App.ViewModels
             _generatePdf = settings.GeneratePdf;
             _keepJpgFiles = settings.KeepJpgFiles;
             _screenshotIntervalText = settings.ScreenshotInterval;
+            _screenChangeRateText = settings.ScreenChangeRate;
             _logEnabled = settings.LogEnabled;
             _logAppendMode = settings.LogAppendMode;
             _selectedOutputMode = settings.SelectedOutputMode;
             _selectedAudioCaptureMode = settings.SelectedAudioCaptureMode;
+            _videoMergeMode = settings.VideoMergeMode;
 
             Logger.SetLogDirectory(_logDirectory);
             Logger.Enabled = _logEnabled;
@@ -678,11 +1148,13 @@ namespace Screenshot.App.ViewModels
             var settings = new AppSettings
             {
                 OutputDirectory = OutputDirectory,
+                LogDirectory = LogDirectory,
                 SessionName = SessionName,
                 GeneratePpt = GeneratePpt,
                 GeneratePdf = GeneratePdf,
                 KeepJpgFiles = KeepJpgFiles,
                 ScreenshotInterval = ScreenshotInterval,
+                ScreenChangeRate = ScreenChangeRate,
                 LogEnabled = LogEnabled,
                 LogAppendMode = LogAppendMode,
                 SelectedOutputMode = SelectedOutputMode,
@@ -692,7 +1164,8 @@ namespace Screenshot.App.ViewModels
                 RegionTop = RegionTop,
                 RegionWidth = RegionWidth,
                 RegionHeight = RegionHeight,
-                RecordingDurationMinutes = RecordingDurationMinutes
+                RecordingDurationMinutes = RecordingDurationMinutes,
+                VideoMergeMode = VideoMergeMode
             };
             settings.Save(_settingsPath);
         }
@@ -701,11 +1174,13 @@ namespace Screenshot.App.ViewModels
         {
             if (string.IsNullOrWhiteSpace(name)) return false;
             return name == nameof(OutputDirectory)
+                || name == nameof(LogDirectory)
                 || name == nameof(SessionName)
                 || name == nameof(GeneratePpt)
                 || name == nameof(GeneratePdf)
                 || name == nameof(KeepJpgFiles)
                 || name == nameof(ScreenshotInterval)
+                || name == nameof(ScreenChangeRate)
                 || name == nameof(LogEnabled)
                 || name == nameof(LogAppendMode)
                 || name == nameof(SelectedOutputMode)
@@ -715,7 +1190,8 @@ namespace Screenshot.App.ViewModels
                 || name == nameof(RegionTop)
                 || name == nameof(RegionWidth)
                 || name == nameof(RegionHeight)
-                || name == nameof(RecordingDurationMinutes);
+                || name == nameof(RecordingDurationMinutes)
+                || name == nameof(VideoMergeMode);
         }
 
         private IRecordingBackend CreateBackend()
@@ -802,6 +1278,62 @@ namespace Screenshot.App.ViewModels
             TryOpenDirectory(dir);
         }
 
+        private void OpenLastVideo()
+        {
+            TryOpenFile(LastVideoPath, "MP4");
+        }
+
+        private void OpenLastAudio()
+        {
+            TryOpenFile(LastAudioPath, "WAV");
+        }
+
+        private void OpenLastPpt()
+        {
+            TryOpenFile(LastPptPath, "PPT");
+        }
+
+        private void OpenLastPdf()
+        {
+            TryOpenFile(LastPdfPath, "PDF");
+        }
+
+        private void OpenLastLogFile()
+        {
+            TryOpenFile(LastLogPath, "日志文件");
+        }
+
+        private void OpenLastSessionDirectory()
+        {
+            if (!OperatingSystem.IsMacOS()) return;
+            if (!HasLastSessionDirectory) return;
+            TryOpenDirectory(LastSessionDirectory!);
+        }
+
+        private void TryOpenFile(string? path, string label)
+        {
+            if (!OperatingSystem.IsMacOS()) return;
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                StatusMessage = $"{label}不存在";
+                return;
+            }
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "open",
+                    Arguments = $"\"{path}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                });
+            }
+            catch
+            {
+                StatusMessage = $"{label}打开失败";
+            }
+        }
+
         private static void TryOpenDirectory(string path)
         {
             try
@@ -818,6 +1350,25 @@ namespace Screenshot.App.ViewModels
             {
                 // ignore
             }
+        }
+
+        private static bool HasFile(string? path)
+        {
+            return !string.IsNullOrWhiteSpace(path) && File.Exists(path);
+        }
+
+        private static int Clamp(int value, int min, int max)
+        {
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
+        }
+
+        private static double Clamp(double value, double min, double max)
+        {
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
         }
     }
 }

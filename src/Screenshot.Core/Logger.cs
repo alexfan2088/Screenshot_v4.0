@@ -44,6 +44,8 @@ namespace Screenshot.Core
         /// </summary>
         public static int LogFileMode => _logFileMode;
 
+        public static string? LogFilePath => _logFilePath;
+
         /// <summary>
         /// 设置日志文件目录
         /// </summary>

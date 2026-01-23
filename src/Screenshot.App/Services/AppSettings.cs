@@ -9,11 +9,13 @@ namespace Screenshot.App.Services
     internal sealed class AppSettings
     {
         public string? OutputDirectory { get; set; }
+        public string? LogDirectory { get; set; }
         public string? SessionName { get; set; }
         public bool GeneratePpt { get; set; } = true;
         public bool GeneratePdf { get; set; } = true;
         public bool KeepJpgFiles { get; set; } = true;
         public string ScreenshotInterval { get; set; } = "10";
+        public string ScreenChangeRate { get; set; } = "11.12";
         public bool LogEnabled { get; set; } = true;
         public bool LogAppendMode { get; set; } = false;
         public OutputMode SelectedOutputMode { get; set; } = OutputMode.AudioAndVideo;
@@ -24,6 +26,7 @@ namespace Screenshot.App.Services
         public string RegionWidth { get; set; } = "0";
         public string RegionHeight { get; set; } = "0";
         public string RecordingDurationMinutes { get; set; } = "60";
+        public int VideoMergeMode { get; set; } = 1;
 
         public static AppSettings Load(string path)
         {
