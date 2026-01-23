@@ -103,4 +103,12 @@ cat > "$PLIST" <<PLIST
 </plist>
 PLIST
 
+echo "[5/5] Code sign bundle (adhoc)"
+if command -v codesign >/dev/null 2>&1; then
+  codesign --force --sign - --timestamp=none "$RES_DIR/RecorderHelper"
+  codesign --force --sign - --timestamp=none --deep "$APP_DIR"
+else
+  echo "codesign not found. Skipping signing." >&2
+fi
+
 echo "Done: $APP_DIR"

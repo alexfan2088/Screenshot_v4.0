@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using ImageSharpImage = SixLabors.ImageSharp.Image;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -183,6 +184,7 @@ namespace Screenshot.App.Services
             throw new PlatformNotSupportedException("Screenshot capture not implemented for this OS yet.");
         }
 
+        [SupportedOSPlatform("windows")]
         private static void CaptureWindowsScreenshot(string imagePath, RecordingConfig config)
         {
             var screenLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);

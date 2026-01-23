@@ -286,7 +286,9 @@ namespace Screenshot.Core
                 if (!_isInitialized || _presentationPart == null || _presentation == null)
                     return;
 
-                _presentationPart.Presentation.Save();
+                var presentation = _presentationPart.Presentation
+                    ?? throw new InvalidOperationException("Presentation 不存在");
+                presentation.Save();
                 _presentation.Dispose();
                 _presentation = null;
 
@@ -422,7 +424,9 @@ namespace Screenshot.Core
 
             DefaultTextStyle defaultTextStyle1 = new DefaultTextStyle();
 
-            presentationPart.Presentation.Append(slideMasterIdList1, slideIdList1, slideSize1, notesSize1, defaultTextStyle1);
+            var presentation = presentationPart.Presentation
+                ?? throw new InvalidOperationException("Presentation 不存在");
+            presentation.Append(slideMasterIdList1, slideIdList1, slideSize1, notesSize1, defaultTextStyle1);
 
             SlidePart slidePart1;
             SlideLayoutPart slideLayoutPart1;
