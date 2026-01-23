@@ -6,85 +6,101 @@
         mc:Ignorable="d"
         x:Class="Screenshot.App.MainWindow"
         Title="Screenshot 4.0"
-        Width="1280" Height="860"
-        MinWidth="1024" MinHeight="720"
-        WindowState="Maximized">
+        Width="1400" Height="52"
+        MinWidth="1024" MinHeight="44"
+        Topmost="True"
+        WindowStartupLocation="CenterScreen">
   <Design.DataContext>
     <vm:MainViewModel />
   </Design.DataContext>
 
-  <Grid>
-    <Border Background="#F5F2EA">
-      <Grid Margin="28" RowDefinitions="Auto,*">
-        <Grid Row="0" ColumnDefinitions="*,Auto">
-          <StackPanel Spacing="6">
-            <TextBlock Text="Screenshot 4.0" FontSize="30" FontWeight="SemiBold" Foreground="#101820" />
-            <TextBlock Text="跨平台录制 · 系统音频优先" Opacity="0.75" Foreground="#1F2A44" />
-          </StackPanel>
-          <Border Grid.Column="1" Background="#0F1A2B" CornerRadius="18" Padding="12,6" VerticalAlignment="Center">
-            <TextBlock Text="mac 优先开发中" Foreground="#F5F2EA" FontSize="12" />
-          </Border>
-        </Grid>
+  <Border Background="#0B6F3E" Padding="6,4" BorderBrush="#0A5A33" BorderThickness="0,0,0,1">
+    <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+        <Menu Background="Transparent" BorderBrush="Transparent" FontSize="12">
+          <Menu.Styles>
+            <Style Selector="MenuItem">
+              <Setter Property="Foreground" Value="#000000" />
+              <Setter Property="Padding" Value="10,4" />
+            </Style>
+            <Style Selector="MenuItem:top-level">
+              <Setter Property="Foreground" Value="#FFFFFF" />
+            </Style>
+          </Menu.Styles>
+          <MenuItem Header="设置">
+            <MenuItem Header="音视频参数" Click="OnOpenSettingsClick" />
+            <Separator />
+            <MenuItem Header="音视频模式">
+              <MenuItem Header="{Binding OutputModeNoneLabel}" Command="{Binding SetOutputModeNoneCommand}" />
+              <MenuItem Header="{Binding OutputModeAudioOnlyLabel}" Command="{Binding SetOutputModeAudioOnlyCommand}" />
+              <MenuItem Header="{Binding OutputModeVideoOnlyLabel}" Command="{Binding SetOutputModeVideoOnlyCommand}" />
+              <MenuItem Header="{Binding OutputModeAudioAndVideoLabel}" Command="{Binding SetOutputModeAudioAndVideoCommand}" />
+            </MenuItem>
+            <MenuItem Header="视频合成方式">
+              <MenuItem Header="{Binding VideoMergeLiveLabel}" Command="{Binding SetVideoMergeLiveCommand}" />
+              <MenuItem Header="{Binding VideoMergePostLabel}" Command="{Binding SetVideoMergePostCommand}" />
+            </MenuItem>
+            <Separator />
+            <MenuItem Header="{Binding KeepJpgLabel}" Command="{Binding ToggleKeepJpgCommand}" />
+            <MenuItem Header="{Binding GeneratePptLabel}" Command="{Binding ToggleGeneratePptCommand}" />
+            <MenuItem Header="{Binding GeneratePdfLabel}" Command="{Binding ToggleGeneratePdfCommand}" />
+            <Separator />
+            <MenuItem Header="日志设置">
+              <MenuItem Header="{Binding LogEnabledLabel}" Command="{Binding SetLogEnabledCommand}" />
+              <MenuItem Header="{Binding LogDisabledLabel}" Command="{Binding SetLogDisabledCommand}" />
+              <Separator />
+              <MenuItem Header="{Binding LogOverwriteLabel}" Command="{Binding SetLogOverwriteCommand}" />
+              <MenuItem Header="{Binding LogAppendLabel}" Command="{Binding SetLogAppendCommand}" />
+            </MenuItem>
+          </MenuItem>
+          <MenuItem Header="目录">
+            <MenuItem Header="选择输出目录" Click="OnPickOutputDirectoryClick" />
+            <MenuItem Header="选择日志目录" Click="OnPickLogDirectoryClick" />
+            <Separator />
+            <MenuItem Header="打开输出目录" Command="{Binding OpenOutputDirectoryCommand}" />
+            <MenuItem Header="打开日志目录" Command="{Binding OpenLogDirectoryCommand}" />
+            <MenuItem Header="打开设置目录" Command="{Binding OpenSettingsDirectoryCommand}" />
+            <MenuItem Header="打开会话目录" Command="{Binding OpenLastSessionDirectoryCommand}" />
+          </MenuItem>
+        </Menu>
 
-        <Grid Row="1" Margin="0,20,0,0" ColumnDefinitions="2*,3*" RowDefinitions="Auto,Auto">
-          <Border Grid.Row="0" Grid.Column="0" Margin="0,0,18,18" Background="#FFFFFF" CornerRadius="18" Padding="18">
-            <StackPanel Spacing="12">
-              <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Left">
-                <Button Content="开始录制" Command="{Binding StartCommand}" Background="#0E7C86" Foreground="#FFFFFF" Padding="14,8" />
-                <Button Content="停止录制" Command="{Binding StopCommand}" Background="#D94B4B" Foreground="#FFFFFF" Padding="14,8" />
-                <Button Content="系统设置" Click="OnOpenSettingsClick" />
-              </StackPanel>
+        <Button Content="开始" Command="{Binding StartCommand}" Background="#1E8E5A" Foreground="#FFFFFF" Padding="8,1" FontSize="12" />
+        <Button Content="停止" Command="{Binding StopCommand}" Background="#B33B3B" Foreground="#FFFFFF" Padding="8,1" FontSize="12" />
+        <Button Content="选择" Click="OnSelectRegionClick" IsEnabled="{Binding IsEditingUnlocked}" Padding="6,1" FontSize="12" />
+        <Button Content="恢复" Command="{Binding ResetSettingsCommand}" IsEnabled="{Binding IsEditingUnlocked}" Padding="6,1" FontSize="12" />
 
-              <StackPanel Orientation="Horizontal" Spacing="12">
-                <TextBlock Text="时长(分钟)" VerticalAlignment="Center" />
-                <TextBox Width="80" Text="{Binding RecordingDurationMinutes}" />
-              </StackPanel>
+        <TextBlock Text="变化率:" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
+        <TextBox Width="22" Height="18" MinHeight="0" Text="{Binding ScreenChangeRate}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" />
+        <TextBlock Text="%" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
 
-              <StackPanel Spacing="8">
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                  <CheckBox Content="自定义区域(Windows)" IsChecked="{Binding UseCustomRegion}" IsEnabled="{Binding IsEditingUnlocked}" />
-                  <TextBlock Text="左" VerticalAlignment="Center" />
-                  <TextBox Width="70" Text="{Binding RegionLeft}" IsEnabled="{Binding IsEditingUnlocked}" />
-                  <TextBlock Text="上" VerticalAlignment="Center" />
-                  <TextBox Width="70" Text="{Binding RegionTop}" IsEnabled="{Binding IsEditingUnlocked}" />
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                  <TextBlock Text="宽" VerticalAlignment="Center" />
-                  <TextBox Width="70" Text="{Binding RegionWidth}" IsEnabled="{Binding IsEditingUnlocked}" />
-                  <TextBlock Text="高" VerticalAlignment="Center" />
-                  <TextBox Width="70" Text="{Binding RegionHeight}" IsEnabled="{Binding IsEditingUnlocked}" />
-                  <Button Content="选择区域" Click="OnSelectRegionClick" IsEnabled="{Binding IsEditingUnlocked}" />
-                </StackPanel>
-              </StackPanel>
-            </StackPanel>
-          </Border>
+        <TextBlock Text="间隔:" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
+        <TextBox Width="18" Height="18" MinHeight="0" Text="{Binding ScreenshotInterval}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" />
+        <TextBlock Text="秒" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
 
-          <Border Grid.Row="0" Grid.Column="1" Margin="18,0,0,18" Background="#101820" CornerRadius="18" Padding="18">
-            <StackPanel Spacing="10">
-              <TextBlock Text="实时状态" Foreground="#E5E5E5" FontWeight="SemiBold" />
-              <TextBlock Text="{Binding StatusMessage}" Foreground="#F9F6EE" FontSize="16" />
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="{Binding SessionDirectoryStatus}" Foreground="#F6EFEA" Opacity="0.85" />
-                <Button Content="复制路径" Command="{Binding CopySessionPathCommand}" IsEnabled="{Binding HasSessionDirectory}" />
-                <Button Content="打开目录" Command="{Binding OpenSessionDirectoryCommand}" IsEnabled="{Binding HasSessionDirectory}" />
-              </StackPanel>
-              <TextBlock Text="{Binding LastOutputSummary}" Foreground="#B0BCC9" />
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <Button Content="打开输出目录" Command="{Binding OpenOutputDirectoryCommand}" />
-                <Button Content="打开日志目录" Command="{Binding OpenLogDirectoryCommand}" />
-              </StackPanel>
-            </StackPanel>
-          </Border>
+        <TextBlock Text="时长:" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
+        <TextBox Width="18" Height="18" MinHeight="0" Text="{Binding RecordingDurationMinutes}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" />
+        <TextBlock Text="分钟" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
 
-          <Border Grid.Row="1" Grid.ColumnSpan="2" Background="#FFFFFF" CornerRadius="18" Padding="18">
-            <StackPanel Spacing="8">
-              <TextBlock Text="提示" FontWeight="SemiBold" />
-              <TextBlock Text="系统设置在右上“系统设置”按钮中。" />
-              <TextBlock Text="首次录制会触发屏幕录制权限。" />
-            </StackPanel>
-          </Border>
-        </Grid>
+      </StackPanel>
+
+      <Grid Grid.Column="1"
+            ColumnDefinitions="Auto,*"
+            VerticalAlignment="Center"
+            HorizontalAlignment="Right"
+            Margin="72,0,0,0">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Text="屏幕变化率:" Foreground="#EAF7F1" FontSize="12" />
+          <TextBlock Text="{Binding CurrentChangeRateText}" Foreground="#FFD54F" FontSize="12" Width="70" TextAlignment="Right" />
+          <TextBlock Text="截图数量:" Foreground="#EAF7F1" FontSize="12" />
+          <TextBlock Text="{Binding CaptureCountText}" Foreground="#FFD54F" FontSize="12" Width="50" TextAlignment="Right" />
+          <TextBlock Text="剩余:" Foreground="#EAF7F1" FontSize="12" />
+          <TextBlock Text="{Binding RemainingTimeText}" Foreground="#FFD54F" FontSize="12" Width="90" TextAlignment="Right" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+          <TextBlock Text="下次检查:" Foreground="#EAF7F1" FontSize="12" />
+          <TextBlock Text="{Binding NextCheckSecondsText}" Foreground="#FFD54F" FontSize="12" Width="70" TextAlignment="Right" />
+        </StackPanel>
       </Grid>
-    </Border>
-  </Grid>
+    </Grid>
+  </Border>
 </Window>

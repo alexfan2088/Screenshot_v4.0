@@ -15,6 +15,8 @@ namespace Screenshot.App.Services
 {
     internal sealed class DocumentCapturePipeline : IAsyncDisposable
     {
+        public event Action<int>? CaptureCompleted;
+
         private readonly RecordingConfig _config;
         private readonly string _outputDir;
         private readonly string _baseName;
@@ -144,6 +146,8 @@ namespace Screenshot.App.Services
                 {
                     TryDelete(imagePath);
                 }
+
+                CaptureCompleted?.Invoke(_captureIndex);
             }
             catch (Exception ex)
             {
