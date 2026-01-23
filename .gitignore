@@ -42,6 +42,11 @@ image/
 # Cursor IDE 配置
 .cursorignore
 
+# macOS & local build artifacts
+.DS_Store
+mac/build/
+src/Screenshot.Mac/RecorderHelper/.build/
+
 # 本地配置和脚本（可选，根据需要取消注释）
 # run.ps1
 # *.ps1
@@ -49,4 +54,3 @@ image/
 # 文档文件（可选，根据需要取消注释）
 # *.md
 # *.docx
-

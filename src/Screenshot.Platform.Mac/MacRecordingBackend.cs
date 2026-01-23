@@ -15,6 +15,8 @@ namespace Screenshot.Platform.Mac
         private RecordingSessionResult? _lastResult;
         private string? _videoPath;
         private string? _audioPath;
+        private string? _lastStdOut;
+        private string? _lastStdErr;
 
         public MacRecordingBackend(string helperPath)
         {
@@ -28,6 +30,11 @@ namespace Screenshot.Platform.Mac
             if (IsRecording)
             {
                 throw new InvalidOperationException("Recording already started");
+            }
+
+            if (!File.Exists(_helperPath))
+            {
+                throw new FileNotFoundException($"RecorderHelper not found: {_helperPath}");
             }
 
             Directory.CreateDirectory(options.OutputDirectory);
@@ -61,7 +68,27 @@ namespace Screenshot.Platform.Mac
 
             _process = new Process { StartInfo = startInfo };
             _process.Start();
+            _process.OutputDataReceived += (_, e) =>
+            {
+                if (string.IsNullOrWhiteSpace(e.Data)) return;
+                _lastStdOut = e.Data;
+                Logger.WriteInfo($"RecorderHelper: {e.Data}");
+            };
+            _process.ErrorDataReceived += (_, e) =>
+            {
+                if (string.IsNullOrWhiteSpace(e.Data)) return;
+                _lastStdErr = e.Data;
+                Logger.WriteError($"RecorderHelper: {e.Data}");
+            };
+            _process.BeginOutputReadLine();
+            _process.BeginErrorReadLine();
             _startTime = DateTime.UtcNow;
+
+            if (_process.WaitForExit(800))
+            {
+                var detail = _lastStdErr ?? _lastStdOut ?? "RecorderHelper exited immediately";
+                throw new InvalidOperationException($"RecorderHelper start failed (code {_process.ExitCode}). {detail}");
+            }
 
             return Task.CompletedTask;
         }
@@ -94,6 +121,8 @@ namespace Screenshot.Platform.Mac
             {
                 try { _process.Kill(); } catch { }
             }
+
+            Logger.WriteInfo($"RecorderHelper exited with code {_process.ExitCode}");
 
             var duration = DateTime.UtcNow - _startTime;
             _lastResult = new RecordingSessionResult(

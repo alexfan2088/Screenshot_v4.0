@@ -66,7 +66,8 @@ mkdir -p "$MACOS_DIR" "$RES_DIR"
 cp "$PUBLISH_DIR/$APP_HOST" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
-cp -R "$PUBLISH_DIR"/* "$RES_DIR/" >/dev/null 2>&1 || true
+# Place the published runtime next to the apphost so .NET can find hostpolicy/runtime files.
+cp -R "$PUBLISH_DIR"/* "$MACOS_DIR/" >/dev/null 2>&1 || true
 
 cp "$HELPER_BIN" "$RES_DIR/RecorderHelper"
 chmod +x "$RES_DIR/RecorderHelper"
