@@ -10,12 +10,15 @@ using System.Threading;
 using System.Threading.Tasks;
 using Screenshot.Core;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace Screenshot.App.Services
 {
     internal sealed class DocumentCapturePipeline : IAsyncDisposable
     {
-        public event Action<int>? CaptureCompleted;
+        public readonly record struct CaptureStatus(int Count, double ChangeRate, DateTime NextIntervalAtUtc);
+
+        public event Action<CaptureStatus>? CaptureCompleted;
 
         private readonly RecordingConfig _config;
         private readonly string _outputDir;
@@ -27,6 +30,8 @@ namespace Screenshot.App.Services
         private PPTGenerator? _ppt;
         private PDFGenerator? _pdf;
         private bool _initialized;
+        private Image<Rgba32>? _lastIntervalImage;
+        private DateTime _nextIntervalAtUtc;
 
         public string? PptPath { get; private set; }
         public string? PdfPath { get; private set; }
@@ -48,28 +53,21 @@ namespace Screenshot.App.Services
             Directory.CreateDirectory(_outputDir);
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            // Capture immediately so PPT/PDF have content even for short recordings.
-            await CaptureOnceAsync(_cts.Token);
-
-            var intervalSeconds = Math.Max(1, _config.ScreenshotInterval);
-            var timer = new PeriodicTimer(TimeSpan.FromSeconds(intervalSeconds));
+            _nextIntervalAtUtc = DateTime.UtcNow.AddSeconds(Math.Max(1, _config.ScreenshotInterval));
 
             _loopTask = Task.Run(async () =>
             {
                 try
                 {
-                    while (await timer.WaitForNextTickAsync(_cts.Token))
+                    while (true)
                     {
                         await CaptureOnceAsync(_cts.Token);
+                        await Task.Delay(TimeSpan.FromSeconds(1), _cts.Token);
                     }
                 }
                 catch (OperationCanceledException)
                 {
                     // Expected during stop.
-                }
-                finally
-                {
-                    timer.Dispose();
                 }
             }, _cts.Token);
         }
@@ -100,6 +98,9 @@ namespace Screenshot.App.Services
                     _pdf.Dispose();
                     _pdf = null;
                 }
+
+                _lastIntervalImage?.Dispose();
+                _lastIntervalImage = null;
             }
             finally
             {
@@ -116,38 +117,72 @@ namespace Screenshot.App.Services
 
             try
             {
-                var fileName = $"{_baseName}_{_captureIndex:D5}.jpg";
-                var imagePath = Path.Combine(_outputDir, fileName);
-                _captureIndex++;
-
-                await CaptureScreenAsync(imagePath, cancellationToken);
-                if (!File.Exists(imagePath))
+                var nowUtc = DateTime.UtcNow;
+                var tempPath = Path.Combine(Path.GetTempPath(), $"{_baseName}_{Guid.NewGuid():N}.jpg");
+                await CaptureScreenAsync(tempPath, cancellationToken);
+                if (!File.Exists(tempPath))
                 {
-                    Logger.WriteWarning($"Screenshot not captured: {imagePath}");
+                    Logger.WriteWarning($"Screenshot not captured: {tempPath}");
                     return;
                 }
 
-                if (!_initialized)
+                using var currentImage = ImageSharpImage.Load<Rgba32>(tempPath);
+                var changeRate = CalculateChangeRate(currentImage);
+                var intervalReached = nowUtc >= _nextIntervalAtUtc;
+                var shouldCapture = intervalReached && (_captureIndex == 0 || changeRate >= _config.ScreenChangeRate);
+
+                if (intervalReached)
                 {
-                    InitializeDocuments(imagePath);
+                    UpdateIntervalBaseline(currentImage);
+                    _nextIntervalAtUtc = nowUtc.AddSeconds(Math.Max(1, _config.ScreenshotInterval));
                 }
 
-                if (_ppt != null)
+                if (shouldCapture)
                 {
-                    _ppt.AddImage(imagePath);
+                    var fileName = $"{_baseName}_{_captureIndex:D5}.jpg";
+                    var imagePath = Path.Combine(_outputDir, fileName);
+                    _captureIndex++;
+
+                    if (File.Exists(imagePath))
+                    {
+                        File.Delete(imagePath);
+                    }
+
+                    File.Move(tempPath, imagePath);
+
+                    try
+                    {
+                        if (!_initialized)
+                        {
+                            InitializeDocuments(imagePath);
+                        }
+
+                        if (_ppt != null)
+                        {
+                            _ppt.AddImage(imagePath);
+                        }
+
+                        if (_pdf != null)
+                        {
+                            _pdf.AddImage(imagePath);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.WriteError("Append image to documents failed", ex);
+                    }
+
+                    if (!_config.KeepJpgFiles)
+                    {
+                        TryDelete(imagePath);
+                    }
+                }
+                else
+                {
+                    TryDelete(tempPath);
                 }
 
-                if (_pdf != null)
-                {
-                    _pdf.AddImage(imagePath);
-                }
-
-                if (!_config.KeepJpgFiles)
-                {
-                    TryDelete(imagePath);
-                }
-
-                CaptureCompleted?.Invoke(_captureIndex);
+                CaptureCompleted?.Invoke(new CaptureStatus(_captureIndex, changeRate, _nextIntervalAtUtc));
             }
             catch (Exception ex)
             {
@@ -157,6 +192,62 @@ namespace Screenshot.App.Services
             {
                 _captureLock.Release();
             }
+        }
+
+        private double CalculateChangeRate(Image<Rgba32> current)
+        {
+            try
+            {
+                if (_lastIntervalImage == null)
+                {
+                    _lastIntervalImage = current.Clone();
+                    return 100.0;
+                }
+
+                if (current.Width != _lastIntervalImage.Width || current.Height != _lastIntervalImage.Height)
+                {
+                    _lastIntervalImage.Dispose();
+                    _lastIntervalImage = current.Clone();
+                    return 100.0;
+                }
+
+                int changedPixels = 0;
+                int sampledPixels = 0;
+                int sampleRate = 5;
+                int width = current.Width;
+                int height = current.Height;
+
+                for (int y = 0; y < height; y += sampleRate)
+                {
+                    for (int x = 0; x < width; x += sampleRate)
+                    {
+                        var currentColor = current[x, y];
+                        var lastColor = _lastIntervalImage[x, y];
+                        int diffR = Math.Abs(currentColor.R - lastColor.R);
+                        int diffG = Math.Abs(currentColor.G - lastColor.G);
+                        int diffB = Math.Abs(currentColor.B - lastColor.B);
+                        if (diffR > 20 || diffG > 20 || diffB > 20)
+                        {
+                            changedPixels++;
+                        }
+                        sampledPixels++;
+                    }
+                }
+
+                var rate = sampledPixels == 0 ? 0.0 : (changedPixels / (double)sampledPixels) * 100.0;
+                return rate;
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteError("Compute change rate failed", ex);
+                return 0.0;
+            }
+        }
+
+        private void UpdateIntervalBaseline(Image<Rgba32> current)
+        {
+            _lastIntervalImage?.Dispose();
+            _lastIntervalImage = current.Clone();
         }
 
         private async Task CaptureScreenAsync(string imagePath, CancellationToken cancellationToken)
@@ -317,7 +408,16 @@ namespace Screenshot.App.Services
                 _cts = null;
             }
 
+            _lastIntervalImage?.Dispose();
+            _lastIntervalImage = null;
             _captureLock.Dispose();
+        }
+
+        public void UpdateCaptureSettings(int intervalSeconds, double screenChangeRate)
+        {
+            _config.ScreenshotInterval = Math.Max(1, intervalSeconds);
+            _config.ScreenChangeRate = Math.Max(0, screenChangeRate);
+            _nextIntervalAtUtc = DateTime.UtcNow.AddSeconds(_config.ScreenshotInterval);
         }
     }
 }
