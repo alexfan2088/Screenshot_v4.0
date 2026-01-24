@@ -204,37 +204,18 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
         var asbd = asbdPtr.pointee
         guard let format = AVAudioFormat(streamDescription: &asbd) else { return nil }
 
-        let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(sampleBuffer))
-        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { return nil }
-        pcmBuffer.frameLength = frameCount
+        let frameCount = Int32(CMSampleBufferGetNumSamples(sampleBuffer))
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)) else { return nil }
+        pcmBuffer.frameLength = AVAudioFrameCount(frameCount)
 
-        var blockBuffer: CMBlockBuffer?
-        var audioBufferList = AudioBufferList(
-            mNumberBuffers: 1,
-            mBuffers: AudioBuffer(mNumberChannels: asbd.mChannelsPerFrame, mDataByteSize: 0, mData: nil)
-        )
-        var bufferListSize = MemoryLayout<AudioBufferList>.size
-        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+        let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
             sampleBuffer,
-            bufferListSizeNeededOut: &bufferListSize,
-            bufferListOut: &audioBufferList,
-            bufferListSize: bufferListSize,
-            blockBufferAllocator: kCFAllocatorDefault,
-            blockBufferMemoryAllocator: kCFAllocatorDefault,
-            flags: 0,
-            blockBufferOut: &blockBuffer
+            at: 0,
+            frameCount: frameCount,
+            into: pcmBuffer.mutableAudioBufferList
         )
 
         guard status == noErr else { return nil }
-
-        // Assumes interleaved buffers from ScreenCaptureKit audio output.
-        let srcBuffer = audioBufferList.mBuffers
-        if let data = srcBuffer.mData {
-            let dstBuffer = pcmBuffer.mutableAudioBufferList.pointee.mBuffers
-            if let dest = dstBuffer.mData {
-                memcpy(dest, data, Int(srcBuffer.mDataByteSize))
-            }
-        }
 
         return pcmBuffer
     }

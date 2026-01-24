@@ -70,15 +70,15 @@
         <Button Content="恢复" Command="{Binding ResetSettingsCommand}" IsEnabled="{Binding IsEditingUnlocked}" Padding="6,1" FontSize="12" />
 
         <TextBlock Text="变化率:" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
-        <TextBox Width="22" Height="18" MinHeight="0" Text="{Binding ScreenChangeRate}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" />
+        <TextBox x:Name="ScreenChangeRateBox" Width="22" Height="18" MinHeight="0" Text="{Binding ScreenChangeRate}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden" />
         <TextBlock Text="%" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
 
         <TextBlock Text="间隔:" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
-        <TextBox Width="18" Height="18" MinHeight="0" Text="{Binding ScreenshotInterval}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" />
+        <TextBox x:Name="ScreenshotIntervalBox" Width="18" Height="18" MinHeight="0" Text="{Binding ScreenshotInterval}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden" />
         <TextBlock Text="秒" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
 
         <TextBlock Text="时长:" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
-        <TextBox Width="18" Height="18" MinHeight="0" Text="{Binding RecordingDurationMinutes}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" />
+        <TextBox x:Name="RecordingDurationBox" Width="18" Height="18" MinHeight="0" Text="{Binding RecordingDurationMinutes}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden" />
         <TextBlock Text="分钟" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
 
       </StackPanel>

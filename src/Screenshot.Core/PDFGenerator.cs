@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using PdfSharpCore.Pdf;
 using PdfSharpCore.Drawing;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
 using static Screenshot.Core.Logger;
 
 namespace Screenshot.Core
@@ -63,10 +65,13 @@ namespace Screenshot.Core
 
                 // 添加图片到页面
                 using (XGraphics gfx = XGraphics.FromPdfPage(page))
+                using (var image = Image.Load(imagePath))
+                using (var stream = new MemoryStream())
                 {
-                    XImage image = XImage.FromFile(imagePath);
-                    gfx.DrawImage(image, 0, 0, widthPoints, heightPoints);
-                    image.Dispose();
+                    image.Save(stream, new PngEncoder());
+                    var bytes = stream.ToArray();
+                    using var pdfImage = XImage.FromStream(() => new MemoryStream(bytes));
+                    gfx.DrawImage(pdfImage, 0, 0, widthPoints, heightPoints);
                 }
 
                 WriteLine($"已添加图片到PDF: {imagePath} (第 {_document.Pages.Count} 页)");

@@ -54,8 +54,11 @@ namespace Screenshot.App.ViewModels
         private double _currentChangeRate;
         private int _captureCount;
         private int _nextCheckSeconds;
+        private DateTime _nextCheckDueAtUtc;
         private string _remainingTimeText = "--";
         private DispatcherTimer? _statusTimer;
+        private DispatcherTimer? _inputApplyTimer;
+        private int _lastDurationMinutesApplied;
         private readonly string _settingsPath;
         private string _settingsPathDisplay;
         private CancellationTokenSource? _autoStopCts;
@@ -339,7 +342,8 @@ namespace Screenshot.App.ViewModels
         public string CurrentChangeRateText => $"{Clamp(_currentChangeRate, 0, 99.99):0.00}%";
         public string CaptureCountText => $"{Clamp(_captureCount, 0, 9999)}";
         public string RemainingTimeText => _remainingTimeText;
-        public string NextCheckSecondsText => $"{Clamp(_nextCheckSeconds, 1, 9999)}秒后";
+        public string NextCheckSecondsText
+            => _nextCheckSeconds <= 0 ? "0秒后" : $"{Clamp(_nextCheckSeconds, 1, 9999)}秒后";
 
         public string? LastVideoPath
         {
@@ -644,19 +648,24 @@ namespace Screenshot.App.ViewModels
             _currentChangeRate = ParseScreenChangeRate();
             _captureCount = 0;
             _nextCheckSeconds = ParseIntervalSeconds();
+            _nextCheckDueAtUtc = DateTime.UtcNow.AddSeconds(_nextCheckSeconds);
+            _lastDurationMinutesApplied = ParseInt(RecordingDurationMinutes);
             UpdateRemainingTime();
             UpdateStatusInfo();
         }
 
         private void StartStatusTimer()
         {
-            _statusTimer?.Stop();
-            _statusTimer = new DispatcherTimer
+            Dispatcher.UIThread.Post(() =>
             {
-                Interval = TimeSpan.FromSeconds(1)
-            };
-            _statusTimer.Tick += OnStatusTimerTick;
-            _statusTimer.Start();
+                _statusTimer?.Stop();
+                _statusTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(1)
+                };
+                _statusTimer.Tick += OnStatusTimerTick;
+                _statusTimer.Start();
+            });
         }
 
         private void StopStatusTimer()
@@ -670,21 +679,61 @@ namespace Screenshot.App.ViewModels
         private void OnStatusTimerTick(object? sender, EventArgs e)
         {
             if (!_isRecording) return;
-            if (_nextCheckSeconds > 0)
+            var remainingSeconds = (int)Math.Ceiling((_nextCheckDueAtUtc - DateTime.UtcNow).TotalSeconds);
+            _nextCheckSeconds = Math.Max(0, remainingSeconds);
+            UpdateRemainingTime();
+            UpdateStatusInfo();
+        }
+
+        private void ScheduleInputApply()
+        {
+            if (_inputApplyTimer == null)
             {
-                _nextCheckSeconds--;
+                _inputApplyTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromSeconds(2)
+                };
+                _inputApplyTimer.Tick += (_, _) =>
+                {
+                    _inputApplyTimer?.Stop();
+                    ApplyInputChanges();
+                };
+            }
+
+            _inputApplyTimer.Stop();
+            _inputApplyTimer.Start();
+        }
+
+        private void ApplyInputChanges()
+        {
+            _currentChangeRate = ParseScreenChangeRate();
+            _nextCheckSeconds = ParseIntervalSeconds();
+            _nextCheckDueAtUtc = DateTime.UtcNow.AddSeconds(_nextCheckSeconds);
+            var durationMinutes = ParseInt(RecordingDurationMinutes);
+            if (_isRecording && durationMinutes != _lastDurationMinutesApplied)
+            {
+                _recordingStart = DateTime.UtcNow;
+            }
+            _lastDurationMinutesApplied = durationMinutes;
+            if (_isRecording && _docPipeline != null)
+            {
+                _docPipeline.UpdateCaptureSettings(_nextCheckSeconds, _currentChangeRate);
             }
             UpdateRemainingTime();
             UpdateStatusInfo();
         }
 
-        private void OnCaptureCompleted(int count)
+        private void OnCaptureCompleted(DocumentCapturePipeline.CaptureStatus status)
         {
-            _captureCount = count;
-            _nextCheckSeconds = ParseIntervalSeconds();
-            _currentChangeRate = ParseScreenChangeRate();
-            UpdateRemainingTime();
-            UpdateStatusInfo();
+            Dispatcher.UIThread.Post(() =>
+            {
+                _captureCount = status.Count;
+                _nextCheckDueAtUtc = status.NextIntervalAtUtc;
+                _nextCheckSeconds = Math.Max(0, (int)Math.Ceiling((_nextCheckDueAtUtc - DateTime.UtcNow).TotalSeconds));
+                _currentChangeRate = status.ChangeRate;
+                UpdateRemainingTime();
+                UpdateStatusInfo();
+            });
         }
 
         private void UpdateRemainingTime()
@@ -818,13 +867,15 @@ namespace Screenshot.App.ViewModels
             }
             if (name == nameof(ScreenChangeRate))
             {
-                _currentChangeRate = ParseScreenChangeRate();
-                UpdateStatusInfo();
+                ScheduleInputApply();
+            }
+            if (name == nameof(ScreenshotInterval))
+            {
+                ScheduleInputApply();
             }
             if (name == nameof(RecordingDurationMinutes))
             {
-                UpdateRemainingTime();
-                UpdateStatusInfo();
+                ScheduleInputApply();
             }
             if (name == nameof(SelectedOutputMode))
             {

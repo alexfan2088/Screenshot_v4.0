@@ -2,6 +2,8 @@ using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Screenshot.App.ViewModels;
 using Avalonia;
+using Avalonia.Input;
+using Avalonia.Threading;
 using System.Linq;
 
 namespace Screenshot.App
@@ -12,6 +14,7 @@ namespace Screenshot.App
         {
             InitializeComponent();
             Opened += (_, _) => PositionTopCenter();
+            HookNumericInputBehavior();
         }
 
         private void OnOpenSettingsClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -79,6 +82,60 @@ namespace Screenshot.App
         {
             if (sender is not Button button) return;
             button.ContextMenu?.Open(button);
+        }
+
+        private void HookNumericInputBehavior()
+        {
+            var boxes = new[]
+            {
+                this.FindControl<TextBox>("ScreenChangeRateBox"),
+                this.FindControl<TextBox>("ScreenshotIntervalBox"),
+                this.FindControl<TextBox>("RecordingDurationBox")
+            };
+
+            foreach (var textBox in boxes)
+            {
+                if (textBox == null) continue;
+                textBox.PointerEntered += OnNumericTextBoxPointerEntered;
+                textBox.PointerExited += OnNumericTextBoxPointerExited;
+            }
+        }
+
+        private static readonly TimeSpan HoverSelectDelay = TimeSpan.FromSeconds(1);
+
+        private void OnNumericTextBoxPointerEntered(object? sender, PointerEventArgs e)
+        {
+            if (sender is TextBox textBox)
+            {
+                var timer = new DispatcherTimer { Interval = HoverSelectDelay };
+                timer.Tick += (_, _) =>
+                {
+                    timer.Stop();
+                    if (textBox.IsFocused)
+                    {
+                        textBox.SelectAll();
+                    }
+                    else
+                    {
+                        textBox.Focus();
+                        textBox.SelectAll();
+                    }
+                };
+                textBox.Tag = timer;
+                timer.Start();
+            }
+        }
+
+        private void OnNumericTextBoxPointerExited(object? sender, PointerEventArgs e)
+        {
+            if (sender is TextBox textBox)
+            {
+                if (textBox.Tag is DispatcherTimer timer)
+                {
+                    timer.Stop();
+                }
+                textBox.Tag = null;
+            }
         }
 
         private async void OnSelectRegionClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
