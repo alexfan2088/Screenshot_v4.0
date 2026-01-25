@@ -44,7 +44,6 @@
 
           <StackPanel Orientation="Horizontal" Spacing="12">
             <CheckBox Content="生成PPT" IsChecked="{Binding GeneratePpt}" IsEnabled="{Binding IsEditingUnlocked}" />
-            <CheckBox Content="生成PDF" IsChecked="{Binding GeneratePdf}" IsEnabled="{Binding IsEditingUnlocked}" />
             <CheckBox Content="保留JPG" IsChecked="{Binding KeepJpgFiles}" IsEnabled="{Binding IsEditingUnlocked}" />
           </StackPanel>
 

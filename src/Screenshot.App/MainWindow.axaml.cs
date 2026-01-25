@@ -11,6 +11,7 @@ namespace Screenshot.App
 {
     public partial class MainWindow : Window
     {
+        private RegionOverlayWindow? _regionOverlay;
         private MainViewModel? _vm;
         private bool _isOpened;
 
@@ -25,6 +26,7 @@ namespace Screenshot.App
             };
             HookNumericInputBehavior();
             DataContextChanged += OnDataContextChanged;
+            Closed += (_, _) => _regionOverlay?.Close();
         }
 
         private void OnOpenSettingsClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -152,6 +154,7 @@ namespace Screenshot.App
         {
             if (DataContext is not MainViewModel vm) return;
             var window = new RegionSelectionWindow();
+            _regionOverlay?.Hide();
             var virtualBounds = GetVirtualScreenBounds();
             if (virtualBounds.HasValue)
             {
@@ -168,6 +171,8 @@ namespace Screenshot.App
                 var value = rect.Value;
                 vm.ApplyCustomRegion(value.X, value.Y, value.Width, value.Height, remember: true);
             }
+            _regionOverlay?.Show();
+            Activate();
         }
 
         private PixelRect? GetVirtualScreenBounds()
@@ -230,10 +235,7 @@ namespace Screenshot.App
                 e.PropertyName == nameof(MainViewModel.RegionWidth) ||
                 e.PropertyName == nameof(MainViewModel.RegionHeight))
             {
-                if (_vm?.IsRecording == true)
-                {
-                    UpdateRegionOverlay();
-                }
+                UpdateRegionOverlay();
             }
         }
 
@@ -253,20 +255,19 @@ namespace Screenshot.App
                 ? new PixelRect(left, top, width, height)
                 : new PixelRect(0, 0, bounds.Value.Width, bounds.Value.Height);
 
-            var canvas = this.FindControl<Canvas>("RegionOverlayCanvas");
-            var border = this.FindControl<Border>("RegionOverlayBorder");
-            if (canvas == null || border == null) return;
+            EnsureRegionOverlay();
+            if (_regionOverlay == null) return;
+            _regionOverlay.SetScreenBounds(bounds.Value);
+            _regionOverlay.SetRegion(rect);
+            _regionOverlay.Show();
+        }
 
-            canvas.Width = bounds.Value.Width;
-            canvas.Height = bounds.Value.Height;
-            Canvas.SetLeft(canvas, bounds.Value.X);
-            Canvas.SetTop(canvas, bounds.Value.Y);
-
-            Canvas.SetLeft(border, rect.X);
-            Canvas.SetTop(border, rect.Y);
-            border.Width = rect.Width;
-            border.Height = rect.Height;
-            border.IsVisible = true;
+        private void EnsureRegionOverlay()
+        {
+            if (_regionOverlay != null) return;
+            if (!_isOpened) return;
+            _regionOverlay = new RegionOverlayWindow();
+            _regionOverlay.Show();
         }
 
         private static int ParseInt(string value)

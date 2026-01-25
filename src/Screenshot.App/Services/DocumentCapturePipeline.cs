@@ -28,13 +28,11 @@ namespace Screenshot.App.Services
         private Task? _loopTask;
         private int _captureIndex;
         private PPTGenerator? _ppt;
-        private PDFGenerator? _pdf;
         private bool _initialized;
         private Image<Rgba32>? _lastIntervalImage;
         private DateTime _nextIntervalAtUtc;
 
         public string? PptPath { get; private set; }
-        public string? PdfPath { get; private set; }
 
         public DocumentCapturePipeline(RecordingConfig config, string outputDir, string baseName)
         {
@@ -90,13 +88,6 @@ namespace Screenshot.App.Services
                     _ppt.Finish();
                     _ppt.Dispose();
                     _ppt = null;
-                }
-
-                if (_pdf != null)
-                {
-                    _pdf.Finish();
-                    _pdf.Dispose();
-                    _pdf = null;
                 }
 
                 _lastIntervalImage?.Dispose();
@@ -162,15 +153,11 @@ namespace Screenshot.App.Services
                             _ppt.AddImage(imagePath);
                         }
 
-                        if (_pdf != null)
-                        {
-                            _pdf.AddImage(imagePath);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.WriteError("Append image to documents failed", ex);
-                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.WriteError("Append image to documents failed", ex);
+                }
 
                     if (!_config.KeepJpgFiles)
                     {
@@ -377,13 +364,6 @@ namespace Screenshot.App.Services
                 PptPath = Path.Combine(_outputDir, $"{_baseName}.pptx");
                 _ppt = new PPTGenerator(PptPath, width, height);
                 _ppt.Initialize();
-            }
-
-            if (_config.GeneratePDF)
-            {
-                PdfPath = Path.Combine(_outputDir, $"{_baseName}.pdf");
-                _pdf = new PDFGenerator(PdfPath, width, height);
-                _pdf.Initialize();
             }
 
             _initialized = true;

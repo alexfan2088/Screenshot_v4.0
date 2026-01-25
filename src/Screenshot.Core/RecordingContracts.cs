@@ -22,7 +22,6 @@ namespace Screenshot.Core
         string? VideoPath,
         string? AudioPath,
         string? PptPath,
-        string? PdfPath,
         TimeSpan Duration);
 
     public interface IRecordingBackend : IAsyncDisposable

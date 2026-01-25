@@ -57,11 +57,8 @@ namespace Screenshot.App
             rect = ClampRect(rect);
             _hasRect = rect.Width > 0 && rect.Height > 0;
             _start = null;
-            if (_hasRect)
-            {
-                _tcs.TrySetResult(rect);
-                Close();
-            }
+            _tcs.TrySetResult(_hasRect ? rect : null);
+            Close();
         }
 
         private void OnKeyDown(object? sender, KeyEventArgs e)

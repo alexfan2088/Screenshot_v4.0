@@ -27,7 +27,6 @@ namespace Screenshot.App.ViewModels
         private IRecordingBackend? _backend;
         private DocumentCapturePipeline? _docPipeline;
         private string? _lastPptPath;
-        private string? _lastPdfPath;
         private string? _lastVideoPath;
         private string? _lastAudioPath;
         private string? _lastLogPath;
@@ -38,7 +37,6 @@ namespace Screenshot.App.ViewModels
         private string _sessionDirectoryPreview = "";
         private bool _freezeSessionPreview;
         private bool _generatePpt = true;
-        private bool _generatePdf = true;
         private bool _keepJpgFiles = true;
         private string _screenshotIntervalText = "10";
         private string _screenChangeRateText = "11.12";
@@ -151,11 +149,6 @@ namespace Screenshot.App.ViewModels
             set => SetField(ref _generatePpt, value);
         }
 
-        public bool GeneratePdf
-        {
-            get => _generatePdf;
-            set => SetField(ref _generatePdf, value);
-        }
 
         public bool KeepJpgFiles
         {
@@ -333,7 +326,6 @@ namespace Screenshot.App.ViewModels
         public string VideoMergePostLabel => VideoMergeMode == 0 ? "✓ 后期合成（长视频需等待）" : "后期合成（长视频需等待）";
         public string KeepJpgLabel => KeepJpgFiles ? "✓ 保留JPG文件" : "保留JPG文件";
         public string GeneratePptLabel => GeneratePpt ? "✓ 生成PPT" : "生成PPT";
-        public string GeneratePdfLabel => GeneratePdf ? "✓ 生成PDF" : "生成PDF";
         public string LogEnabledLabel => LogEnabled ? "✓ 输出日志" : "输出日志";
         public string LogDisabledLabel => LogEnabled ? "不输出日志" : "✓ 不输出日志";
         public string LogOverwriteLabel => LogAppendMode ? "日志文件覆盖" : "✓ 日志文件覆盖";
@@ -369,11 +361,6 @@ namespace Screenshot.App.ViewModels
             private set => SetField(ref _lastPptPath, value);
         }
 
-        public string? LastPdfPath
-        {
-            get => _lastPdfPath;
-            private set => SetField(ref _lastPdfPath, value);
-        }
 
         public string? LastLogPath
         {
@@ -390,7 +377,6 @@ namespace Screenshot.App.ViewModels
         public bool HasLastVideo => HasFile(LastVideoPath);
         public bool HasLastAudio => HasFile(LastAudioPath);
         public bool HasLastPpt => HasFile(LastPptPath);
-        public bool HasLastPdf => HasFile(LastPdfPath);
         public bool HasLastLog => HasFile(LastLogPath);
         public bool HasLastSessionDirectory => !string.IsNullOrWhiteSpace(LastSessionDirectory) && Directory.Exists(LastSessionDirectory);
 
@@ -405,7 +391,6 @@ namespace Screenshot.App.ViewModels
         public ICommand OpenLastVideoCommand { get; }
         public ICommand OpenLastAudioCommand { get; }
         public ICommand OpenLastPptCommand { get; }
-        public ICommand OpenLastPdfCommand { get; }
         public ICommand OpenLastLogCommand { get; }
         public ICommand OpenLastSessionDirectoryCommand { get; }
         public ICommand SetOutputModeNoneCommand { get; }
@@ -416,7 +401,6 @@ namespace Screenshot.App.ViewModels
         public ICommand SetVideoMergePostCommand { get; }
         public ICommand ToggleKeepJpgCommand { get; }
         public ICommand ToggleGeneratePptCommand { get; }
-        public ICommand ToggleGeneratePdfCommand { get; }
         public ICommand SetLogEnabledCommand { get; }
         public ICommand SetLogDisabledCommand { get; }
         public ICommand SetLogOverwriteCommand { get; }
@@ -470,7 +454,6 @@ namespace Screenshot.App.ViewModels
             OpenLastVideoCommand = new DelegateCommand(OpenLastVideo, () => HasLastVideo);
             OpenLastAudioCommand = new DelegateCommand(OpenLastAudio, () => HasLastAudio);
             OpenLastPptCommand = new DelegateCommand(OpenLastPpt, () => HasLastPpt);
-            OpenLastPdfCommand = new DelegateCommand(OpenLastPdf, () => HasLastPdf);
             OpenLastLogCommand = new DelegateCommand(OpenLastLogFile, () => HasLastLog);
             OpenLastSessionDirectoryCommand = new DelegateCommand(OpenLastSessionDirectory, () => HasLastSessionDirectory);
             SetOutputModeNoneCommand = new DelegateCommand(() => SelectedOutputMode = OutputMode.None);
@@ -481,7 +464,6 @@ namespace Screenshot.App.ViewModels
             SetVideoMergePostCommand = new DelegateCommand(() => VideoMergeMode = 0);
             ToggleKeepJpgCommand = new DelegateCommand(() => KeepJpgFiles = !KeepJpgFiles);
             ToggleGeneratePptCommand = new DelegateCommand(() => GeneratePpt = !GeneratePpt);
-            ToggleGeneratePdfCommand = new DelegateCommand(() => GeneratePdf = !GeneratePdf);
             SetLogEnabledCommand = new DelegateCommand(() => LogEnabled = true);
             SetLogDisabledCommand = new DelegateCommand(() => LogEnabled = false);
             SetLogOverwriteCommand = new DelegateCommand(() => LogAppendMode = false);
@@ -505,7 +487,6 @@ namespace Screenshot.App.ViewModels
             {
                 AudioCaptureMode = SelectedAudioCaptureMode,
                 GeneratePPT = GeneratePpt,
-                GeneratePDF = GeneratePdf,
                 KeepJpgFiles = KeepJpgFiles,
                 ScreenshotInterval = ParseIntervalSeconds(),
                 ScreenChangeRate = ParseScreenChangeRate(),
@@ -595,7 +576,6 @@ namespace Screenshot.App.ViewModels
             {
                 _docPipeline.CaptureCompleted -= OnCaptureCompleted;
                 LastPptPath = _docPipeline.PptPath;
-                LastPdfPath = _docPipeline.PdfPath;
                 await _docPipeline.StopAsync(System.Threading.CancellationToken.None);
                 await DisposeDocPipelineAsync();
             }
@@ -606,10 +586,9 @@ namespace Screenshot.App.ViewModels
             LastLogPath = Logger.LogFilePath;
             LastSessionDirectory = currentSessionDir;
             var ppt = LastPptPath ?? "-";
-            var pdf = LastPdfPath ?? "-";
             var mp4 = LastVideoPath ?? "-";
             var wav = LastAudioPath ?? "-";
-            LastOutputSummary = $"mp4: {mp4} | wav: {wav} | ppt: {ppt} | pdf: {pdf}";
+            LastOutputSummary = $"mp4: {mp4} | wav: {wav} | ppt: {ppt}";
             SessionDirectoryStatus = "";
             RaiseCommandStates();
             _stopInProgress = false;
@@ -630,7 +609,6 @@ namespace Screenshot.App.ViewModels
             if (OpenLastVideoCommand is DelegateCommand lastVideo) lastVideo.RaiseCanExecuteChanged();
             if (OpenLastAudioCommand is DelegateCommand lastAudio) lastAudio.RaiseCanExecuteChanged();
             if (OpenLastPptCommand is DelegateCommand lastPpt) lastPpt.RaiseCanExecuteChanged();
-            if (OpenLastPdfCommand is DelegateCommand lastPdf) lastPdf.RaiseCanExecuteChanged();
             if (OpenLastLogCommand is DelegateCommand lastLog) lastLog.RaiseCanExecuteChanged();
             if (OpenLastSessionDirectoryCommand is DelegateCommand lastSession) lastSession.RaiseCanExecuteChanged();
         }
@@ -905,10 +883,6 @@ namespace Screenshot.App.ViewModels
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePptLabel)));
             }
-            if (name == nameof(GeneratePdf))
-            {
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdfLabel)));
-            }
             if (name == nameof(KeepJpgFiles))
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgLabel)));
@@ -941,11 +915,6 @@ namespace Screenshot.App.ViewModels
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasLastPpt)));
                 if (OpenLastPptCommand is DelegateCommand lastPpt) lastPpt.RaiseCanExecuteChanged();
-            }
-            if (name == nameof(LastPdfPath))
-            {
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasLastPdf)));
-                if (OpenLastPdfCommand is DelegateCommand lastPdf) lastPdf.RaiseCanExecuteChanged();
             }
             if (name == nameof(LastLogPath))
             {
@@ -1003,7 +972,6 @@ namespace Screenshot.App.ViewModels
                     LogDirectory = LogDirectory,
                     SessionName = SessionName,
                     GeneratePpt = GeneratePpt,
-                    GeneratePdf = GeneratePdf,
                     KeepJpgFiles = KeepJpgFiles,
                     ScreenshotInterval = ScreenshotInterval,
                     ScreenChangeRate = ScreenChangeRate,
@@ -1064,7 +1032,6 @@ namespace Screenshot.App.ViewModels
             }
 
             _generatePpt = settings.GeneratePpt;
-            _generatePdf = settings.GeneratePdf;
             _keepJpgFiles = settings.KeepJpgFiles;
             _screenshotIntervalText = settings.ScreenshotInterval;
             _screenChangeRateText = settings.ScreenChangeRate;
@@ -1093,7 +1060,6 @@ namespace Screenshot.App.ViewModels
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogDirectory)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SessionName)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePpt)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdf)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgFiles)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenshotInterval)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenChangeRate)));
@@ -1130,7 +1096,6 @@ namespace Screenshot.App.ViewModels
             }
 
             _generatePpt = settings.GeneratePpt;
-            _generatePdf = settings.GeneratePdf;
             _keepJpgFiles = settings.KeepJpgFiles;
             _screenshotIntervalText = settings.ScreenshotInterval;
             _screenChangeRateText = settings.ScreenChangeRate;
@@ -1153,7 +1118,6 @@ namespace Screenshot.App.ViewModels
                 LogDirectory = LogDirectory,
                 SessionName = SessionName,
                 GeneratePpt = GeneratePpt,
-                GeneratePdf = GeneratePdf,
                 KeepJpgFiles = KeepJpgFiles,
                 ScreenshotInterval = ScreenshotInterval,
                 ScreenChangeRate = ScreenChangeRate,
@@ -1179,7 +1143,6 @@ namespace Screenshot.App.ViewModels
                 || name == nameof(LogDirectory)
                 || name == nameof(SessionName)
                 || name == nameof(GeneratePpt)
-                || name == nameof(GeneratePdf)
                 || name == nameof(KeepJpgFiles)
                 || name == nameof(ScreenshotInterval)
                 || name == nameof(ScreenChangeRate)
@@ -1295,10 +1258,6 @@ namespace Screenshot.App.ViewModels
             TryOpenFile(LastPptPath, "PPT");
         }
 
-        private void OpenLastPdf()
-        {
-            TryOpenFile(LastPdfPath, "PDF");
-        }
 
         private void OpenLastLogFile()
         {
