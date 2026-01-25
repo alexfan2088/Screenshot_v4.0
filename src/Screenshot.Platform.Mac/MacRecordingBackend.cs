@@ -129,7 +129,6 @@ namespace Screenshot.Platform.Mac
                 _videoPath,
                 _audioPath,
                 null,
-                null,
                 duration);
 
             return _lastResult;

@@ -12,7 +12,6 @@ namespace Screenshot.App.Services
         public string? LogDirectory { get; set; }
         public string? SessionName { get; set; }
         public bool GeneratePpt { get; set; } = true;
-        public bool GeneratePdf { get; set; } = true;
         public bool KeepJpgFiles { get; set; } = true;
         public string ScreenshotInterval { get; set; } = "10";
         public string ScreenChangeRate { get; set; } = "11.12";

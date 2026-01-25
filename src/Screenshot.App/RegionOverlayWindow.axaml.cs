@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using Avalonia.Platform;
+using System.Runtime.InteropServices;
 
 namespace Screenshot.App
 {
@@ -11,6 +13,7 @@ namespace Screenshot.App
             InitializeComponent();
             IsHitTestVisible = false;
             Focusable = false;
+            Opened += (_, _) => EnableMousePassthrough();
         }
 
         private void InitializeComponent()
@@ -35,5 +38,20 @@ namespace Screenshot.App
             border.Width = region.Width;
             border.Height = region.Height;
         }
+
+        private void EnableMousePassthrough()
+        {
+            if (!OperatingSystem.IsMacOS()) return;
+            var handle = this.TryGetPlatformHandle();
+            if (handle == null || handle.Handle == IntPtr.Zero) return;
+            var sel = sel_registerName("setIgnoresMouseEvents:");
+            objc_msgSend(handle.Handle, sel, true);
+        }
+
+        [DllImport("/usr/lib/libobjc.A.dylib")]
+        private static extern IntPtr sel_registerName(string name);
+
+        [DllImport("/usr/lib/libobjc.A.dylib")]
+        private static extern void objc_msgSend(IntPtr receiver, IntPtr selector, bool value);
     }
 }

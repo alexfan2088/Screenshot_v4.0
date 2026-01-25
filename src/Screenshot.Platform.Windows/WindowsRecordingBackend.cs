@@ -125,7 +125,6 @@ namespace Screenshot.Platform.Windows
                 videoPath,
                 audioPath,
                 null,
-                null,
                 DateTime.UtcNow - _startTime);
 
             _cts.Dispose();
