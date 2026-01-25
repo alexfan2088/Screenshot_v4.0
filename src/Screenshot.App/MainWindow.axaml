@@ -14,9 +14,10 @@
     <vm:MainViewModel />
   </Design.DataContext>
 
-  <Border Background="#0B6F3E" Padding="6,4" BorderBrush="#0A5A33" BorderThickness="0,0,0,1">
-    <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
-      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+  <Grid>
+    <Border Background="#0B6F3E" Padding="6,4" BorderBrush="#0A5A33" BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
         <Menu Background="Transparent" BorderBrush="Transparent" FontSize="12">
           <Menu.Styles>
             <Style Selector="MenuItem">
@@ -100,7 +101,17 @@
           <TextBlock Text="下次检查:" Foreground="#EAF7F1" FontSize="12" />
           <TextBlock Text="{Binding NextCheckSecondsText}" Foreground="#FFD54F" FontSize="12" Width="70" TextAlignment="Right" />
         </StackPanel>
+        </Grid>
       </Grid>
-    </Grid>
-  </Border>
+    </Border>
+
+    <Canvas Name="RegionOverlayCanvas"
+            IsHitTestVisible="False">
+      <Border Name="RegionOverlayBorder"
+              BorderBrush="#FF3B30"
+              BorderThickness="2"
+              Background="#10FF3B30"
+              IsVisible="False" />
+    </Canvas>
+  </Grid>
 </Window>

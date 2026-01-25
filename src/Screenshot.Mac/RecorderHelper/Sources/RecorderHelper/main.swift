@@ -10,6 +10,8 @@ struct RecorderConfig {
     let fps: Int
     let width: Int
     let height: Int
+    let left: Int
+    let top: Int
     let includeVideo: Bool
     let includeAudio: Bool
     let audioMode: String
@@ -49,6 +51,9 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
         configuration.capturesAudio = config.includeAudio
         configuration.sampleRate = 48000
         configuration.channelCount = 2
+        if config.width > 0 && config.height > 0 && (config.left != 0 || config.top != 0) {
+            configuration.sourceRect = CGRect(x: config.left, y: config.top, width: config.width, height: config.height)
+        }
 
         let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: DispatchQueue(label: "recorder.video"))
@@ -261,6 +266,8 @@ struct RecorderHelper {
         var fps = 30
         var width = 1920
         var height = 1080
+        var left = 0
+        var top = 0
         var includeVideo = true
         var includeAudio = true
         var audioMode = "native"
@@ -278,6 +285,10 @@ struct RecorderHelper {
                 if let value = iterator.next(), let parsed = Int(value) { width = parsed }
             case "--height":
                 if let value = iterator.next(), let parsed = Int(value) { height = parsed }
+            case "--left":
+                if let value = iterator.next(), let parsed = Int(value) { left = parsed }
+            case "--top":
+                if let value = iterator.next(), let parsed = Int(value) { top = parsed }
             case "--no-video":
                 includeVideo = false
             case "--no-audio":
@@ -299,6 +310,8 @@ struct RecorderHelper {
             fps: fps,
             width: width,
             height: height,
+            left: left,
+            top: top,
             includeVideo: includeVideo,
             includeAudio: includeAudio,
             audioMode: audioMode

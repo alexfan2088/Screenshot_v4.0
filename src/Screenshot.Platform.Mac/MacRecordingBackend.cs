@@ -44,7 +44,7 @@ namespace Screenshot.Platform.Mac
             var args = $"--output \"{_videoPath}\" --wav \"{_audioPath}\" --fps {options.Config.VideoFrameRate} --audio-mode {(options.Config.AudioCaptureMode == AudioCaptureMode.NativeSystemAudio ? "native" : "virtual")}";
             if (options.Config.RegionWidth > 0 && options.Config.RegionHeight > 0)
             {
-                args += $" --width {options.Config.RegionWidth} --height {options.Config.RegionHeight}";
+                args += $" --width {options.Config.RegionWidth} --height {options.Config.RegionHeight} --left {options.Config.RegionLeft} --top {options.Config.RegionTop}";
             }
             if (options.OutputMode == OutputMode.AudioOnly)
             {
