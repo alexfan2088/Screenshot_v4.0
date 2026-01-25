@@ -1,18 +1,21 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="Screenshot.App.RegionSelectionWindow"
+        x:Class="Screenshot.App.RegionOverlayWindow"
         TransparencyLevelHint="Transparent"
-        Background="#40000000"
+        Background="Transparent"
         SystemDecorations="None"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="-1"
         CanResize="False"
-        Topmost="True">
-  <Canvas Name="SelectionCanvas">
-    <Border Name="SelectionBorder"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Focusable="False"
+        IsHitTestVisible="False"
+        ShowActivated="False">
+  <Canvas Name="OverlayCanvas" IsHitTestVisible="False">
+    <Border Name="HighlightBorder"
             BorderBrush="#FF3B30"
             BorderThickness="2"
-            Background="#30FFFFFF"
-            IsVisible="False" />
+            Background="#10FF3B30" />
   </Canvas>
 </Window>

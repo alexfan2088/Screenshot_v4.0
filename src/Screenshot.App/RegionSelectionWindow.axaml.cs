@@ -22,6 +22,7 @@ namespace Screenshot.App
             this.PointerReleased += OnPointerReleased;
             this.KeyDown += OnKeyDown;
             this.Closed += OnClosed;
+            Cursor = new Cursor(StandardCursorType.Cross);
         }
 
         private void InitializeComponent()
@@ -36,14 +37,15 @@ namespace Screenshot.App
 
         private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
         {
-            _start = e.GetPosition(this);
+            var point = e.GetPosition(this);
+            _start = point;
             UpdateSelection(_start.Value, _start.Value);
         }
 
         private void OnPointerMoved(object? sender, PointerEventArgs e)
         {
-            if (_start == null) return;
             var current = e.GetPosition(this);
+            if (_start == null) return;
             UpdateSelection(_start.Value, current);
         }
 
@@ -52,8 +54,14 @@ namespace Screenshot.App
             if (_start == null) return;
             var end = e.GetPosition(this);
             var rect = BuildRect(_start.Value, end);
-            _tcs.TrySetResult(rect.Width > 0 && rect.Height > 0 ? rect : null);
-            Close();
+            rect = ClampRect(rect);
+            _hasRect = rect.Width > 0 && rect.Height > 0;
+            _start = null;
+            if (_hasRect)
+            {
+                _tcs.TrySetResult(rect);
+                Close();
+            }
         }
 
         private void OnKeyDown(object? sender, KeyEventArgs e)
@@ -116,6 +124,7 @@ namespace Screenshot.App
             UpdateSelection(new Point(_currentRect.X, _currentRect.Y), new Point(_currentRect.X + _currentRect.Width, _currentRect.Y + _currentRect.Height));
         }
 
+
         private void OnClosed(object? sender, EventArgs e)
         {
             _tcs.TrySetResult(null);
@@ -127,8 +136,6 @@ namespace Screenshot.App
             _currentRect = ClampRect(rect);
             _hasRect = _currentRect.Width > 0 && _currentRect.Height > 0;
             var border = this.FindControl<Border>("SelectionBorder");
-            var badge = this.FindControl<Border>("InfoBadge");
-            var text = this.FindControl<TextBlock>("InfoText");
             if (border == null) return;
 
             Canvas.SetLeft(border, _currentRect.X);
@@ -136,17 +143,6 @@ namespace Screenshot.App
             border.Width = _currentRect.Width;
             border.Height = _currentRect.Height;
             border.IsVisible = true;
-
-            if (badge != null && text != null)
-            {
-                text.Text = $"X:{_currentRect.X} Y:{_currentRect.Y} W:{_currentRect.Width} H:{_currentRect.Height}";
-                var badgeX = _currentRect.X + 6;
-                var badgeY = _currentRect.Y - 26;
-                if (badgeY < 0) badgeY = _currentRect.Y + 6;
-                Canvas.SetLeft(badge, badgeX);
-                Canvas.SetTop(badge, badgeY);
-                badge.IsVisible = true;
-            }
         }
 
         private PixelRect BuildRect(Point a, Point b)
@@ -168,5 +164,6 @@ namespace Screenshot.App
             var height = Math.Clamp(rect.Height, 1, maxY - y + 1);
             return new PixelRect(x, y, width, height);
         }
+
     }
 }

@@ -49,6 +49,11 @@ namespace Screenshot.App.ViewModels
         private string _regionTopText = "0";
         private string _regionWidthText = "0";
         private string _regionHeightText = "0";
+        private bool _hasLastRegion;
+        private int _lastRegionLeft;
+        private int _lastRegionTop;
+        private int _lastRegionWidth;
+        private int _lastRegionHeight;
         private string _recordingDurationMinutesText = "60";
         private int _videoMergeMode = 1;
         private double _currentChangeRate;
@@ -122,6 +127,7 @@ namespace Screenshot.App.ViewModels
 
         public bool IsEditingLocked => _isRecording;
         public bool IsEditingUnlocked => !_isRecording;
+        public bool IsRecording => _isRecording;
 
         public string SessionDirectoryPreview
         {
@@ -459,7 +465,7 @@ namespace Screenshot.App.ViewModels
             OpenSessionDirectoryCommand = new DelegateCommand(OpenSessionDirectory, () => !string.IsNullOrWhiteSpace(SessionDirectoryStatus));
             OpenOutputDirectoryCommand = new DelegateCommand(OpenOutputDirectory, () => Directory.Exists(OutputDirectory));
             OpenLogDirectoryCommand = new DelegateCommand(OpenLogDirectory, () => Directory.Exists(LogDirectory));
-            ResetSettingsCommand = new DelegateCommand(ResetSettings, () => !_isRecording);
+            ResetSettingsCommand = new DelegateCommand(RestoreLastRegion, () => !_isRecording);
             OpenSettingsDirectoryCommand = new DelegateCommand(OpenSettingsDirectory, () => Directory.Exists(Path.GetDirectoryName(_settingsPath) ?? string.Empty));
             OpenLastVideoCommand = new DelegateCommand(OpenLastVideo, () => HasLastVideo);
             OpenLastAudioCommand = new DelegateCommand(OpenLastAudio, () => HasLastAudio);
@@ -958,87 +964,32 @@ namespace Screenshot.App.ViewModels
 
         }
 
-        private void ResetSettings()
+        public void ApplyCustomRegion(int left, int top, int width, int height, bool remember)
+        {
+            UseCustomRegion = true;
+            RegionLeft = left.ToString();
+            RegionTop = top.ToString();
+            RegionWidth = width.ToString();
+            RegionHeight = height.ToString();
+            if (remember)
+            {
+                _hasLastRegion = true;
+                _lastRegionLeft = left;
+                _lastRegionTop = top;
+                _lastRegionWidth = width;
+                _lastRegionHeight = height;
+            }
+        }
+
+        private void RestoreLastRegion()
         {
             if (_isRecording) return;
-            var defaults = new AppSettings();
-            _outputDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "ScreenshotV4.0");
-            _logDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "ScreenshotV4.0-Logs");
-            _sessionName = $"Screenshot_{DateTime.Now:yyyyMMdd}";
-
-            _generatePpt = defaults.GeneratePpt;
-            _generatePdf = defaults.GeneratePdf;
-            _keepJpgFiles = defaults.KeepJpgFiles;
-            _screenshotIntervalText = defaults.ScreenshotInterval;
-            _screenChangeRateText = defaults.ScreenChangeRate;
-            _logEnabled = defaults.LogEnabled;
-            _logAppendMode = defaults.LogAppendMode;
-            _selectedOutputMode = defaults.SelectedOutputMode;
-            _selectedAudioCaptureMode = defaults.SelectedAudioCaptureMode;
-            _useCustomRegion = defaults.UseCustomRegion;
-            _regionLeftText = defaults.RegionLeft;
-            _regionTopText = defaults.RegionTop;
-            _regionWidthText = defaults.RegionWidth;
-            _regionHeightText = defaults.RegionHeight;
-            _recordingDurationMinutesText = defaults.RecordingDurationMinutes;
-            _videoMergeMode = defaults.VideoMergeMode;
-
-            Logger.SetLogDirectory(_logDirectory);
-            Logger.Enabled = _logEnabled;
-            Logger.SetLogFileMode(_logAppendMode ? 1 : 0);
-
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputDirectory)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogDirectory)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SessionName)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePpt)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdf)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgFiles)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenshotInterval)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ScreenChangeRate)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogEnabled)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogAppendMode)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedOutputMode)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedAudioCaptureMode)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UseCustomRegion)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionLeft)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionTop)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionWidth)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionHeight)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RecordingDurationMinutes)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergeMode)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeNoneLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioOnlyLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeVideoOnlyLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioAndVideoLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergeLiveLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergePostLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePptLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdfLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogEnabledLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogDisabledLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogOverwriteLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogAppendLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeNoneLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioOnlyLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeVideoOnlyLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioAndVideoLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergeLiveLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VideoMergePostLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePptLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePdfLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogEnabledLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogDisabledLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogOverwriteLabel)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogAppendLabel)));
-
-            RefreshSessionDirectoryPreview();
-            SaveSettings();
+            if (!_hasLastRegion) return;
+            UseCustomRegion = true;
+            RegionLeft = _lastRegionLeft.ToString();
+            RegionTop = _lastRegionTop.ToString();
+            RegionWidth = _lastRegionWidth.ToString();
+            RegionHeight = _lastRegionHeight.ToString();
         }
 
         public void ExportSettingsTo(string path)

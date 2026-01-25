@@ -4,17 +4,27 @@ using Screenshot.App.ViewModels;
 using Avalonia;
 using Avalonia.Input;
 using Avalonia.Threading;
+using System.ComponentModel;
 using System.Linq;
 
 namespace Screenshot.App
 {
     public partial class MainWindow : Window
     {
+        private MainViewModel? _vm;
+        private bool _isOpened;
+
         public MainWindow()
         {
             InitializeComponent();
-            Opened += (_, _) => PositionTopCenter();
+            Opened += (_, _) =>
+            {
+                _isOpened = true;
+                PositionTopCenter();
+                UpdateRegionOverlay();
+            };
             HookNumericInputBehavior();
+            DataContextChanged += OnDataContextChanged;
         }
 
         private void OnOpenSettingsClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -141,12 +151,6 @@ namespace Screenshot.App
         private async void OnSelectRegionClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             if (DataContext is not MainViewModel vm) return;
-            if (!OperatingSystem.IsWindows())
-            {
-                vm.StatusMessage = "区域选择仅支持 Windows";
-                return;
-            }
-
             var window = new RegionSelectionWindow();
             var virtualBounds = GetVirtualScreenBounds();
             if (virtualBounds.HasValue)
@@ -162,11 +166,7 @@ namespace Screenshot.App
             if (rect.HasValue)
             {
                 var value = rect.Value;
-                vm.UseCustomRegion = true;
-                vm.RegionLeft = value.X.ToString();
-                vm.RegionTop = value.Y.ToString();
-                vm.RegionWidth = value.Width.ToString();
-                vm.RegionHeight = value.Height.ToString();
+                vm.ApplyCustomRegion(value.X, value.Y, value.Width, value.Height, remember: true);
             }
         }
 
@@ -205,6 +205,73 @@ namespace Screenshot.App
             var x = area.X + Math.Max(0, (area.Width - width) / 2);
             var y = area.Y;
             Position = new PixelPoint(x, y);
+        }
+
+        private void OnDataContextChanged(object? sender, EventArgs e)
+        {
+            if (_vm != null)
+            {
+                _vm.PropertyChanged -= OnVmPropertyChanged;
+            }
+
+            _vm = DataContext as MainViewModel;
+            if (_vm != null)
+            {
+                _vm.PropertyChanged += OnVmPropertyChanged;
+                UpdateRegionOverlay();
+            }
+        }
+
+        private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(MainViewModel.UseCustomRegion) ||
+                e.PropertyName == nameof(MainViewModel.RegionLeft) ||
+                e.PropertyName == nameof(MainViewModel.RegionTop) ||
+                e.PropertyName == nameof(MainViewModel.RegionWidth) ||
+                e.PropertyName == nameof(MainViewModel.RegionHeight))
+            {
+                if (_vm?.IsRecording == true)
+                {
+                    UpdateRegionOverlay();
+                }
+            }
+        }
+
+        private void UpdateRegionOverlay()
+        {
+            if (!_isOpened) return;
+            if (_vm == null) return;
+            var bounds = GetVirtualScreenBounds();
+            if (!bounds.HasValue) return;
+
+            var useCustom = _vm.UseCustomRegion;
+            var left = ParseInt(_vm.RegionLeft);
+            var top = ParseInt(_vm.RegionTop);
+            var width = ParseInt(_vm.RegionWidth);
+            var height = ParseInt(_vm.RegionHeight);
+            var rect = useCustom && width > 0 && height > 0
+                ? new PixelRect(left, top, width, height)
+                : new PixelRect(0, 0, bounds.Value.Width, bounds.Value.Height);
+
+            var canvas = this.FindControl<Canvas>("RegionOverlayCanvas");
+            var border = this.FindControl<Border>("RegionOverlayBorder");
+            if (canvas == null || border == null) return;
+
+            canvas.Width = bounds.Value.Width;
+            canvas.Height = bounds.Value.Height;
+            Canvas.SetLeft(canvas, bounds.Value.X);
+            Canvas.SetTop(canvas, bounds.Value.Y);
+
+            Canvas.SetLeft(border, rect.X);
+            Canvas.SetTop(border, rect.Y);
+            border.Width = rect.Width;
+            border.Height = rect.Height;
+            border.IsVisible = true;
+        }
+
+        private static int ParseInt(string value)
+        {
+            return int.TryParse(value, out var result) ? result : 0;
         }
     }
 }
