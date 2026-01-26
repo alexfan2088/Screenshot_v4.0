@@ -197,9 +197,7 @@ namespace Screenshot.App
             try
             {
                 UpdateCurrentDisplayId();
-                var targetDir = !string.IsNullOrWhiteSpace(vm.SessionDirectoryStatus)
-                    ? vm.SessionDirectoryStatus
-                    : vm.SessionDirectoryPreview;
+                var targetDir = vm.OutputDirectory;
                 Directory.CreateDirectory(targetDir);
                 var fileName = $"截图{DateTime.Now:yyMMddHHmmssfff}.jpg";
                 var imagePath = Path.Combine(targetDir, fileName);
