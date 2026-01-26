@@ -16,6 +16,8 @@ MACOS_DIR="$APP_DIR/Contents/MacOS"
 RES_DIR="$APP_DIR/Contents/Resources"
 PLIST="$APP_DIR/Contents/Info.plist"
 ICON_SRC="$ROOT_DIR/mac/Screenshot.icns"
+INSTALL_DIR="/Applications"
+INSTALL_PATH="$INSTALL_DIR/$APP_NAME.app"
 SWIFTPM_CACHE_DIR="$ROOT_DIR/mac/build/swift-module-cache"
 
 mkdir -p "$OUT_DIR"
@@ -120,4 +122,15 @@ else
   echo "codesign not found. Skipping signing." >&2
 fi
 
+echo "[6/6] Install to $INSTALL_PATH"
+if [ -d "$INSTALL_PATH" ]; then
+  rm -rf "$INSTALL_PATH"
+fi
+if [ -w "$INSTALL_DIR" ]; then
+  cp -R "$APP_DIR" "$INSTALL_PATH"
+else
+  sudo cp -R "$APP_DIR" "$INSTALL_PATH"
+fi
+
 echo "Done: $APP_DIR"
+echo "Installed: $INSTALL_PATH"
