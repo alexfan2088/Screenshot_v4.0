@@ -12,6 +12,7 @@ struct RecorderConfig {
     let height: Int
     let left: Int
     let top: Int
+    let displayId: UInt32
     let includeVideo: Bool
     let includeAudio: Bool
     let audioMode: String
@@ -39,7 +40,8 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
 
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        guard let display = content.displays.first else {
+        let display = content.displays.first { $0.displayID == config.displayId } ?? content.displays.first
+        guard let display else {
             throw NSError(domain: "RecorderHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "No display available"])
         }
 
@@ -271,6 +273,7 @@ struct RecorderHelper {
         var includeVideo = true
         var includeAudio = true
         var audioMode = "native"
+        var displayId: UInt32 = 0
 
         var iterator = CommandLine.arguments.dropFirst().makeIterator()
         while let arg = iterator.next() {
@@ -289,6 +292,8 @@ struct RecorderHelper {
                 if let value = iterator.next(), let parsed = Int(value) { left = parsed }
             case "--top":
                 if let value = iterator.next(), let parsed = Int(value) { top = parsed }
+            case "--display-id":
+                if let value = iterator.next(), let parsed = UInt32(value) { displayId = parsed }
             case "--no-video":
                 includeVideo = false
             case "--no-audio":
@@ -312,6 +317,7 @@ struct RecorderHelper {
             height: height,
             left: left,
             top: top,
+            displayId: displayId,
             includeVideo: includeVideo,
             includeAudio: includeAudio,
             audioMode: audioMode

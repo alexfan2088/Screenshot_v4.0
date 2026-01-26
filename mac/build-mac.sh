@@ -15,9 +15,12 @@ APP_DIR="$OUT_DIR/$APP_NAME.app"
 MACOS_DIR="$APP_DIR/Contents/MacOS"
 RES_DIR="$APP_DIR/Contents/Resources"
 PLIST="$APP_DIR/Contents/Info.plist"
+ICON_SRC="$ROOT_DIR/mac/Screenshot.icns"
+SWIFTPM_CACHE_DIR="$ROOT_DIR/mac/build/swift-module-cache"
 
 mkdir -p "$OUT_DIR"
 mkdir -p "$ROOT_DIR/mac/build"
+mkdir -p "$SWIFTPM_CACHE_DIR"
 
 if ! command -v dotnet >/dev/null 2>&1; then
   echo "dotnet not found. Install .NET SDK 8+ first." >&2
@@ -31,7 +34,8 @@ fi
 
 echo "[1/4] Build RecorderHelper (Swift)"
 cd "$HELPER_DIR"
-swift build -c release
+SWIFTPM_DISABLE_SANDBOX=1 SWIFTPM_MODULECACHE_OVERRIDE="$SWIFTPM_CACHE_DIR" \
+  swift build -c release --disable-sandbox
 
 if [ ! -f "$HELPER_BIN" ]; then
   echo "RecorderHelper build failed: $HELPER_BIN not found" >&2
@@ -71,6 +75,9 @@ cp -R "$PUBLISH_DIR"/* "$MACOS_DIR/" >/dev/null 2>&1 || true
 
 cp "$HELPER_BIN" "$RES_DIR/RecorderHelper"
 chmod +x "$RES_DIR/RecorderHelper"
+if [ -f "$ICON_SRC" ]; then
+  cp "$ICON_SRC" "$RES_DIR/Screenshot.icns"
+fi
 
 echo "[4/4] Write Info.plist"
 cat > "$PLIST" <<PLIST
@@ -90,6 +97,8 @@ cat > "$PLIST" <<PLIST
   <string>$VERSION</string>
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>Screenshot.icns</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
   <key>NSHighResolutionCapable</key>

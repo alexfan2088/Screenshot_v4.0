@@ -46,6 +46,10 @@ namespace Screenshot.Platform.Mac
             {
                 args += $" --width {options.Config.RegionWidth} --height {options.Config.RegionHeight} --left {options.Config.RegionLeft} --top {options.Config.RegionTop}";
             }
+            if (options.Config.DisplayId > 0)
+            {
+                args += $" --display-id {options.Config.DisplayId}";
+            }
             if (options.OutputMode == OutputMode.AudioOnly)
             {
                 args += " --no-video";
