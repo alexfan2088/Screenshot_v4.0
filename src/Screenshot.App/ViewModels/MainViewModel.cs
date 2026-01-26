@@ -55,6 +55,7 @@ namespace Screenshot.App.ViewModels
         private string _recordingDurationMinutesText = "60";
         private int _videoMergeMode = 1;
         private int _currentDisplayId;
+        private bool _captureCurrentSpaceOnly = true;
         private double _currentChangeRate;
         private int _captureCount;
         private int _nextCheckSeconds;
@@ -185,6 +186,12 @@ namespace Screenshot.App.ViewModels
         {
             get => _currentDisplayId;
             private set => SetField(ref _currentDisplayId, value);
+        }
+
+        public bool CaptureCurrentSpaceOnly
+        {
+            get => _captureCurrentSpaceOnly;
+            private set => SetField(ref _captureCurrentSpaceOnly, value);
         }
 
         public bool UseCustomRegion
@@ -505,7 +512,8 @@ namespace Screenshot.App.ViewModels
                 RegionTop = ParseInt(RegionTop),
                 RegionWidth = ParseInt(RegionWidth),
                 RegionHeight = ParseInt(RegionHeight),
-                DisplayId = CurrentDisplayId
+                DisplayId = CurrentDisplayId,
+                CaptureCurrentSpaceOnly = CaptureCurrentSpaceOnly
             };
 
             var sanitizedName = SanitizeSessionName(SessionName);
@@ -973,6 +981,11 @@ namespace Screenshot.App.ViewModels
         {
             if (displayId <= 0) return;
             CurrentDisplayId = displayId;
+        }
+
+        public void UpdateCaptureSpaceMode(bool captureCurrentSpaceOnly)
+        {
+            CaptureCurrentSpaceOnly = captureCurrentSpaceOnly;
         }
 
         public void ExportSettingsTo(string path)

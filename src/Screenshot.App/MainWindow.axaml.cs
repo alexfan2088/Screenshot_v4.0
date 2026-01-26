@@ -29,12 +29,21 @@ namespace Screenshot.App
                 _isOpened = true;
                 PositionTopCenter();
                 UpdateCurrentDisplayId();
+                UpdateCaptureSpaceMode();
                 UpdateRegionOverlay();
             };
             HookNumericInputBehavior();
             DataContextChanged += OnDataContextChanged;
-            Activated += (_, _) => UpdateCurrentDisplayId();
-            PositionChanged += (_, _) => UpdateCurrentDisplayId();
+            Activated += (_, _) =>
+            {
+                UpdateCurrentDisplayId();
+                UpdateCaptureSpaceMode();
+            };
+            PositionChanged += (_, _) =>
+            {
+                UpdateCurrentDisplayId();
+                UpdateCaptureSpaceMode();
+            };
             Closed += (_, _) => _regionOverlay?.Close();
         }
 
@@ -163,6 +172,7 @@ namespace Screenshot.App
         {
             if (DataContext is not MainViewModel vm) return;
             UpdateCurrentDisplayId();
+            UpdateCaptureSpaceMode();
             var window = new RegionSelectionWindow();
             _regionOverlay?.Hide();
             var virtualBounds = GetVirtualScreenBounds();
@@ -197,6 +207,7 @@ namespace Screenshot.App
             try
             {
                 UpdateCurrentDisplayId();
+                UpdateCaptureSpaceMode();
                 var targetDir = vm.OutputDirectory;
                 Directory.CreateDirectory(targetDir);
                 var fileName = $"截图{DateTime.Now:yyMMddHHmmssfff}.jpg";
@@ -411,6 +422,14 @@ namespace Screenshot.App
             }
         }
 
+        private void UpdateCaptureSpaceMode()
+        {
+            if (_vm == null) return;
+            if (!OperatingSystem.IsMacOS()) return;
+            var captureCurrentSpaceOnly = IsWindowAssignedAllSpaces();
+            _vm.UpdateCaptureSpaceMode(captureCurrentSpaceOnly);
+        }
+
         private int GetDisplayIdForWindow()
         {
             var handle = this.TryGetPlatformHandle();
@@ -433,6 +452,16 @@ namespace Screenshot.App
             return (int)objc_msgSend_uint(number, selUnsignedIntValue);
         }
 
+        private bool IsWindowAssignedAllSpaces()
+        {
+            var handle = this.TryGetPlatformHandle();
+            if (handle == null || handle.Handle == IntPtr.Zero) return true;
+            var nsWindow = handle.Handle;
+            var selCollectionBehavior = sel_registerName("collectionBehavior");
+            var behavior = objc_msgSend_ulong(nsWindow, selCollectionBehavior);
+            return (behavior & NSWindowCollectionBehaviorCanJoinAllSpaces) != 0;
+        }
+
         [DllImport("/usr/lib/libobjc.A.dylib")]
         private static extern IntPtr objc_getClass(string name);
 
@@ -450,5 +479,10 @@ namespace Screenshot.App
 
         [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")]
         private static extern uint objc_msgSend_uint(IntPtr receiver, IntPtr selector);
+
+        [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")]
+        private static extern ulong objc_msgSend_ulong(IntPtr receiver, IntPtr selector);
+
+        private const ulong NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0;
     }
 }
