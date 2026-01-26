@@ -195,9 +195,12 @@ namespace Screenshot.App
             try
             {
                 UpdateCurrentDisplayId();
-                Directory.CreateDirectory(vm.OutputDirectory);
+                var targetDir = !string.IsNullOrWhiteSpace(vm.SessionDirectoryStatus)
+                    ? vm.SessionDirectoryStatus
+                    : vm.SessionDirectoryPreview;
+                Directory.CreateDirectory(targetDir);
                 var fileName = $"截图{DateTime.Now:yyMMddHHmmssfff}.jpg";
-                var imagePath = Path.Combine(vm.OutputDirectory, fileName);
+                var imagePath = Path.Combine(targetDir, fileName);
 
                 var regionArgs = "";
                 if (vm.UseCustomRegion)
