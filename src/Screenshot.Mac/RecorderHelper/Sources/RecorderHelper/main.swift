@@ -40,13 +40,26 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
             throw NSError(domain: "RecorderHelper", code: 2, userInfo: [NSLocalizedDescriptionKey: "audioMode only supports native for now"])
         }
 
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: config.captureCurrentSpaceOnly)
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let display = content.displays.first { $0.displayID == config.displayId } ?? content.displays.first
         guard let display else {
             throw NSError(domain: "RecorderHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "No display available"])
         }
 
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let filter: SCContentFilter
+        if config.captureCurrentSpaceOnly {
+            filter = SCContentFilter(display: display, excludingWindows: [])
+        } else {
+            let windows = content.windows.filter { $0.isOnScreen }
+            if windows.isEmpty {
+                filter = SCContentFilter(display: display, excludingWindows: [])
+            } else {
+                filter = SCContentFilter(display: display, includingWindows: windows)
+                if #available(macOS 14.2, *) {
+                    filter.includeMenuBar = true
+                }
+            }
+        }
         let configuration = SCStreamConfiguration()
         configuration.width = config.width
         configuration.height = config.height
