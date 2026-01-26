@@ -242,17 +242,27 @@ namespace Screenshot.App.Services
         {
             if (OperatingSystem.IsMacOS())
             {
+                var windowArg = "";
+                if (_config.CaptureMode == CaptureMode.Window && _config.WindowId > 0)
+                {
+                    windowArg = $"-l {_config.WindowId} ";
+                }
                 var regionArgs = "";
-                if (_config.UseCustomRegion && _config.RegionWidth > 0 && _config.RegionHeight > 0)
+                if (string.IsNullOrWhiteSpace(windowArg) && _config.UseCustomRegion && _config.RegionWidth > 0 && _config.RegionHeight > 0)
                 {
                     regionArgs = $"-R {_config.RegionLeft},{_config.RegionTop},{_config.RegionWidth},{_config.RegionHeight} ";
                 }
 
                 // Try most specific first, then fall back to more permissive captures.
                 var displayArg = _config.DisplayId > 0 ? $"-D {_config.DisplayId} " : "";
-                if (await TryScreenCapture($"{displayArg}{regionArgs}-x -t jpg \"{imagePath}\"", cancellationToken) && File.Exists(imagePath))
+                if (await TryScreenCapture($"{displayArg}{windowArg}{regionArgs}-x -t jpg \"{imagePath}\"", cancellationToken) && File.Exists(imagePath))
                 {
                     return true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(windowArg))
+                {
+                    return await TryScreenCapture($"{windowArg}-x -t jpg \"{imagePath}\"", cancellationToken) && File.Exists(imagePath);
                 }
 
                 if (!string.IsNullOrWhiteSpace(regionArgs))

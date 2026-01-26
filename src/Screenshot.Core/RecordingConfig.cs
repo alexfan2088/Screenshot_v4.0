@@ -40,6 +40,8 @@ namespace Screenshot.Core
         public int RegionHeight { get; set; }
         public int DisplayId { get; set; }
         public bool CaptureCurrentSpaceOnly { get; set; } = true;
+        public CaptureMode CaptureMode { get; set; } = CaptureMode.AnyRegion;
+        public int WindowId { get; set; }
 
         // 截图参数
         public double ScreenChangeRate { get; set; } = 11.12; // 屏幕变化率 1-1000%，默认11.12%

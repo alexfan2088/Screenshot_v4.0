@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Screenshot.App.ViewModels;
+using Screenshot.App.Services;
 using Avalonia;
 using Avalonia.Input;
 using Avalonia.Threading;
@@ -173,15 +174,47 @@ namespace Screenshot.App
             if (DataContext is not MainViewModel vm) return;
             UpdateCurrentDisplayId();
             UpdateCaptureSpaceMode();
+            if (vm.SelectedCaptureMode == CaptureMode.Window)
+            {
+                if (!OperatingSystem.IsMacOS())
+                {
+                    vm.StatusMessage = "窗口选择仅支持 macOS";
+                    return;
+                }
+
+                var picker = new WindowPickerWindow();
+                _regionOverlay?.Hide();
+                var virtualBounds = GetVirtualScreenBounds();
+                if (virtualBounds.HasValue)
+                {
+                    var bounds = virtualBounds.Value;
+                    var scale = GetPrimaryScreenScale();
+                    picker.Position = bounds.Position;
+                    picker.Width = bounds.Width / scale;
+                    picker.Height = bounds.Height / scale;
+                }
+                picker.Show();
+
+                var selection = await picker.PickAsync();
+                if (selection.HasValue)
+                {
+                    vm.ApplySelectedWindow(selection.Value.WindowId, remember: true);
+                }
+                _regionOverlay?.Show();
+                Activate();
+                return;
+            }
+
             var window = new RegionSelectionWindow();
             _regionOverlay?.Hide();
-            var virtualBounds = GetVirtualScreenBounds();
-            if (virtualBounds.HasValue)
+            var regionBounds = GetVirtualScreenBounds();
+            if (regionBounds.HasValue)
             {
-                var bounds = virtualBounds.Value;
+                var bounds = regionBounds.Value;
+                var scale = GetPrimaryScreenScale();
                 window.Position = bounds.Position;
-                window.Width = bounds.Width;
-                window.Height = bounds.Height;
+                window.Width = bounds.Width / scale;
+                window.Height = bounds.Height / scale;
             }
             window.Show();
 
@@ -189,7 +222,15 @@ namespace Screenshot.App
             if (rect.HasValue)
             {
                 var value = rect.Value;
-                vm.ApplyCustomRegion(value.X, value.Y, value.Width, value.Height, remember: true);
+                var topLeft = window.PointToScreen(new Point(value.X, value.Y));
+                var bottomRight = window.PointToScreen(new Point(value.X + value.Width, value.Y + value.Height));
+                var left = Math.Min(topLeft.X, bottomRight.X);
+                var top = Math.Min(topLeft.Y, bottomRight.Y);
+                var right = Math.Max(topLeft.X, bottomRight.X);
+                var bottom = Math.Max(topLeft.Y, bottomRight.Y);
+                var width = Math.Max(1, right - left);
+                var height = Math.Max(1, bottom - top);
+                vm.ApplyCustomRegion(left, top, width, height, remember: true);
             }
             _regionOverlay?.Show();
             Activate();
@@ -203,6 +244,11 @@ namespace Screenshot.App
                 vm.StatusMessage = "截图仅支持 macOS";
                 return;
             }
+            if (vm.SelectedCaptureMode == CaptureMode.Window && vm.SelectedWindowId <= 0)
+            {
+                vm.StatusMessage = "请先选择要录制的窗口";
+                return;
+            }
 
             try
             {
@@ -210,11 +256,16 @@ namespace Screenshot.App
                 UpdateCaptureSpaceMode();
                 var targetDir = vm.OutputDirectory;
                 Directory.CreateDirectory(targetDir);
-                var fileName = $"截图{DateTime.Now:yyMMddHHmmssfff}.jpg";
+                var fileName = $"截图{DateTime.Now:yyMMddHHmmssfff}.png";
                 var imagePath = Path.Combine(targetDir, fileName);
 
                 var regionArgs = "";
-                if (vm.UseCustomRegion)
+                var windowArg = "";
+                if (vm.SelectedCaptureMode == CaptureMode.Window && vm.SelectedWindowId > 0)
+                {
+                    windowArg = $"-l {vm.SelectedWindowId} ";
+                }
+                else if (vm.UseCustomRegion)
                 {
                     var left = ParseInt(vm.RegionLeft);
                     var top = ParseInt(vm.RegionTop);
@@ -227,16 +278,20 @@ namespace Screenshot.App
                 }
 
                 var displayArg = vm.CurrentDisplayId > 0 ? $"-D {vm.CurrentDisplayId} " : "";
-                if (!await TryScreenCapture($"{displayArg}{regionArgs}-x -t jpg \"{imagePath}\""))
+                if (!await TryScreenCapture($"{displayArg}{windowArg}{regionArgs}-x -t png \"{imagePath}\""))
                 {
-                    if (!string.IsNullOrWhiteSpace(regionArgs))
+                    if (!string.IsNullOrWhiteSpace(windowArg))
                     {
-                        await TryScreenCapture($"{regionArgs}-x -t jpg \"{imagePath}\"");
+                        await TryScreenCapture($"{windowArg}-x -t png \"{imagePath}\"");
+                    }
+                    else if (!string.IsNullOrWhiteSpace(regionArgs))
+                    {
+                        await TryScreenCapture($"{regionArgs}-x -t png \"{imagePath}\"");
                     }
                 }
-                if (!File.Exists(imagePath))
+                if (!File.Exists(imagePath) && string.IsNullOrWhiteSpace(windowArg))
                 {
-                    await TryScreenCapture($"-x -t jpg \"{imagePath}\"");
+                    await TryScreenCapture($"-x -t png \"{imagePath}\"");
                 }
 
                 if (!File.Exists(imagePath))
@@ -249,7 +304,7 @@ namespace Screenshot.App
                 if (OperatingSystem.IsMacOS())
                 {
                     var escapedPath = imagePath.Replace("\"", "\\\"");
-                    var script = $"set the clipboard to (read (POSIX file \\\"{escapedPath}\\\") as JPEG picture)";
+                    var script = $"set the clipboard to (read (POSIX file \\\"{escapedPath}\\\") as «class PNGf»)";
                     var clipInfo = new ProcessStartInfo
                     {
                         FileName = "osascript",
@@ -323,6 +378,8 @@ namespace Screenshot.App
         private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName == nameof(MainViewModel.UseCustomRegion) ||
+                e.PropertyName == nameof(MainViewModel.SelectedCaptureMode) ||
+                e.PropertyName == nameof(MainViewModel.SelectedWindowId) ||
                 e.PropertyName == nameof(MainViewModel.RegionLeft) ||
                 e.PropertyName == nameof(MainViewModel.RegionTop) ||
                 e.PropertyName == nameof(MainViewModel.RegionWidth) ||
@@ -339,6 +396,43 @@ namespace Screenshot.App
             var bounds = GetVirtualScreenBounds();
             if (!bounds.HasValue) return;
 
+            if (_vm.SelectedCaptureMode == CaptureMode.Window)
+            {
+                if (!OperatingSystem.IsMacOS())
+                {
+                    _regionOverlay?.Hide();
+                    return;
+                }
+
+                if (_vm.SelectedWindowId <= 0)
+                {
+                    _regionOverlay?.Hide();
+                    return;
+                }
+
+                if (!MacWindowPicker.TryGetWindowBounds(_vm.SelectedWindowId, out var windowBounds))
+                {
+                    _regionOverlay?.Hide();
+                    return;
+                }
+
+                EnsureRegionOverlay();
+                if (_regionOverlay == null) return;
+                var windowScale = GetPrimaryScreenScale();
+                _regionOverlay.SetScreenBounds(bounds.Value, windowScale);
+                var windowOverlayTopLeft = _regionOverlay.PointToClient(new PixelPoint(windowBounds.X, windowBounds.Y));
+                var windowOverlayBottomRight = _regionOverlay.PointToClient(new PixelPoint(windowBounds.X + windowBounds.Width, windowBounds.Y + windowBounds.Height));
+                var windowOverlayRect = new PixelRect(
+                    (int)Math.Round(Math.Min(windowOverlayTopLeft.X, windowOverlayBottomRight.X)),
+                    (int)Math.Round(Math.Min(windowOverlayTopLeft.Y, windowOverlayBottomRight.Y)),
+                    Math.Max(1, (int)Math.Round(Math.Abs(windowOverlayBottomRight.X - windowOverlayTopLeft.X))),
+                    Math.Max(1, (int)Math.Round(Math.Abs(windowOverlayBottomRight.Y - windowOverlayTopLeft.Y)))
+                );
+                _regionOverlay.SetRegion(windowOverlayRect);
+                _regionOverlay.Show();
+                return;
+            }
+
             var useCustom = _vm.UseCustomRegion;
             var left = ParseInt(_vm.RegionLeft);
             var top = ParseInt(_vm.RegionTop);
@@ -350,12 +444,25 @@ namespace Screenshot.App
                 return;
             }
 
-            var rect = new PixelRect(left, top, width, height);
+            var regionScale = GetPrimaryScreenScale();
+            var dipLeft = (int)Math.Round((left - bounds.Value.X) / regionScale);
+            var dipTop = (int)Math.Round((top - bounds.Value.Y) / regionScale);
+            var dipWidth = (int)Math.Round(width / regionScale);
+            var dipHeight = (int)Math.Round(height / regionScale);
+            var rect = new PixelRect(dipLeft, dipTop, Math.Max(1, dipWidth), Math.Max(1, dipHeight));
 
             EnsureRegionOverlay();
             if (_regionOverlay == null) return;
-            _regionOverlay.SetScreenBounds(bounds.Value);
-            _regionOverlay.SetRegion(rect);
+            _regionOverlay.SetScreenBounds(bounds.Value, regionScale);
+            var regionOverlayTopLeft = _regionOverlay.PointToClient(new PixelPoint(left, top));
+            var regionOverlayBottomRight = _regionOverlay.PointToClient(new PixelPoint(left + width, top + height));
+            var regionOverlayRect = new PixelRect(
+                (int)Math.Round(Math.Min(regionOverlayTopLeft.X, regionOverlayBottomRight.X)),
+                (int)Math.Round(Math.Min(regionOverlayTopLeft.Y, regionOverlayBottomRight.Y)),
+                Math.Max(1, (int)Math.Round(Math.Abs(regionOverlayBottomRight.X - regionOverlayTopLeft.X))),
+                Math.Max(1, (int)Math.Round(Math.Abs(regionOverlayBottomRight.Y - regionOverlayTopLeft.Y)))
+            );
+            _regionOverlay.SetRegion(regionOverlayRect);
             _regionOverlay.Show();
         }
 
@@ -370,6 +477,13 @@ namespace Screenshot.App
         private static int ParseInt(string value)
         {
             return int.TryParse(value, out var result) ? result : 0;
+        }
+
+        private double GetPrimaryScreenScale()
+        {
+            var screen = Screens?.Primary;
+            var scale = screen?.Scaling ?? 1.0;
+            return scale <= 0 ? 1.0 : scale;
         }
 
         private static async Task<bool> TryScreenCapture(string arguments)

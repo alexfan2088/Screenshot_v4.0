@@ -18,6 +18,7 @@ namespace Screenshot.App.ViewModels
     {
         private OutputMode _selectedOutputMode = OutputMode.AudioAndVideo;
         private AudioCaptureMode _selectedAudioCaptureMode = AudioCaptureMode.NativeSystemAudio;
+        private CaptureMode _selectedCaptureMode = CaptureMode.AnyRegion;
         private string _outputDirectory;
         private string _statusMessage = "待机";
         private string _lastOutputSummary = "暂无录制";
@@ -52,6 +53,9 @@ namespace Screenshot.App.ViewModels
         private int _lastRegionTop;
         private int _lastRegionWidth;
         private int _lastRegionHeight;
+        private int _selectedWindowId;
+        private bool _hasLastWindow;
+        private int _lastWindowId;
         private string _recordingDurationMinutesText = "60";
         private int _videoMergeMode = 1;
         private int _currentDisplayId;
@@ -87,6 +91,12 @@ namespace Screenshot.App.ViewModels
         {
             get => _selectedAudioCaptureMode;
             set => SetField(ref _selectedAudioCaptureMode, value);
+        }
+
+        public CaptureMode SelectedCaptureMode
+        {
+            get => _selectedCaptureMode;
+            set => SetField(ref _selectedCaptureMode, value);
         }
 
         public string OutputDirectory
@@ -127,6 +137,7 @@ namespace Screenshot.App.ViewModels
 
         public bool IsEditingLocked => _isRecording;
         public bool IsEditingUnlocked => !_isRecording;
+        public bool IsRegionSelectionEnabled => !_isRecording;
         public bool IsRecording => _isRecording;
 
         public string SessionDirectoryPreview
@@ -222,6 +233,12 @@ namespace Screenshot.App.ViewModels
         {
             get => _regionHeightText;
             set => SetField(ref _regionHeightText, value);
+        }
+
+        public int SelectedWindowId
+        {
+            get => _selectedWindowId;
+            set => SetField(ref _selectedWindowId, value);
         }
 
         public bool LogEnabled
@@ -336,6 +353,8 @@ namespace Screenshot.App.ViewModels
         public string OutputModeAudioOnlyLabel => SelectedOutputMode == OutputMode.AudioOnly ? "✓ 只生成音频文件" : "只生成音频文件";
         public string OutputModeVideoOnlyLabel => SelectedOutputMode == OutputMode.VideoOnly ? "✓ 只生成视频文件" : "只生成视频文件";
         public string OutputModeAudioAndVideoLabel => SelectedOutputMode == OutputMode.AudioAndVideo ? "✓ 生成音频+视频文件" : "生成音频+视频文件";
+        public string CaptureModeWindowLabel => SelectedCaptureMode == CaptureMode.Window ? "✓ 录制窗口方式" : "录制窗口方式";
+        public string CaptureModeAnyRegionLabel => SelectedCaptureMode == CaptureMode.AnyRegion ? "✓ 录制任意区域方式" : "录制任意区域方式";
         public string VideoMergeLiveLabel => VideoMergeMode == 1 ? "✓ 边录边合（推荐，秒级完成）" : "边录边合（推荐，秒级完成）";
         public string VideoMergePostLabel => VideoMergeMode == 0 ? "✓ 后期合成（长视频需等待）" : "后期合成（长视频需等待）";
         public string KeepJpgLabel => KeepJpgFiles ? "✓ 保留JPG文件" : "保留JPG文件";
@@ -411,6 +430,8 @@ namespace Screenshot.App.ViewModels
         public ICommand SetOutputModeAudioOnlyCommand { get; }
         public ICommand SetOutputModeVideoOnlyCommand { get; }
         public ICommand SetOutputModeAudioAndVideoCommand { get; }
+        public ICommand SetCaptureModeWindowCommand { get; }
+        public ICommand SetCaptureModeAnyRegionCommand { get; }
         public ICommand SetVideoMergeLiveCommand { get; }
         public ICommand SetVideoMergePostCommand { get; }
         public ICommand ToggleKeepJpgCommand { get; }
@@ -474,6 +495,8 @@ namespace Screenshot.App.ViewModels
             SetOutputModeAudioOnlyCommand = new DelegateCommand(() => SelectedOutputMode = OutputMode.AudioOnly);
             SetOutputModeVideoOnlyCommand = new DelegateCommand(() => SelectedOutputMode = OutputMode.VideoOnly);
             SetOutputModeAudioAndVideoCommand = new DelegateCommand(() => SelectedOutputMode = OutputMode.AudioAndVideo);
+            SetCaptureModeWindowCommand = new DelegateCommand(() => SelectedCaptureMode = CaptureMode.Window);
+            SetCaptureModeAnyRegionCommand = new DelegateCommand(() => SelectedCaptureMode = CaptureMode.AnyRegion);
             SetVideoMergeLiveCommand = new DelegateCommand(() => VideoMergeMode = 1);
             SetVideoMergePostCommand = new DelegateCommand(() => VideoMergeMode = 0);
             ToggleKeepJpgCommand = new DelegateCommand(() => KeepJpgFiles = !KeepJpgFiles);
@@ -486,6 +509,11 @@ namespace Screenshot.App.ViewModels
 
         private async System.Threading.Tasks.Task StartRecordingAsync()
         {
+            if (SelectedCaptureMode == CaptureMode.Window && SelectedWindowId <= 0)
+            {
+                StatusMessage = "请先选择要录制的窗口";
+                return;
+            }
             Directory.CreateDirectory(OutputDirectory);
             Directory.CreateDirectory(LogDirectory);
             Logger.SetLogDirectory(LogDirectory);
@@ -497,6 +525,12 @@ namespace Screenshot.App.ViewModels
             _freezeSessionPreview = true;
             RaiseCommandStates();
 
+            var useRegion = SelectedCaptureMode == CaptureMode.AnyRegion && UseCustomRegion;
+            var regionLeft = useRegion ? ParseInt(RegionLeft) : 0;
+            var regionTop = useRegion ? ParseInt(RegionTop) : 0;
+            var regionWidth = useRegion ? ParseInt(RegionWidth) : 0;
+            var regionHeight = useRegion ? ParseInt(RegionHeight) : 0;
+
             var config = new RecordingConfig
             {
                 AudioCaptureMode = SelectedAudioCaptureMode,
@@ -507,11 +541,13 @@ namespace Screenshot.App.ViewModels
                 VideoMergeMode = VideoMergeMode,
                 LogEnabled = LogEnabled ? 1 : 0,
                 LogFileMode = LogAppendMode ? 1 : 0,
-                UseCustomRegion = UseCustomRegion,
-                RegionLeft = ParseInt(RegionLeft),
-                RegionTop = ParseInt(RegionTop),
-                RegionWidth = ParseInt(RegionWidth),
-                RegionHeight = ParseInt(RegionHeight),
+                CaptureMode = SelectedCaptureMode,
+                UseCustomRegion = useRegion,
+                RegionLeft = regionLeft,
+                RegionTop = regionTop,
+                RegionWidth = regionWidth,
+                RegionHeight = regionHeight,
+                WindowId = SelectedWindowId,
                 DisplayId = CurrentDisplayId,
                 CaptureCurrentSpaceOnly = CaptureCurrentSpaceOnly
             };
@@ -847,6 +883,7 @@ namespace Screenshot.App.ViewModels
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingUnlocked)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRegionSelectionEnabled)));
             }
             if (name == nameof(SessionDirectoryStatus))
             {
@@ -887,6 +924,12 @@ namespace Screenshot.App.ViewModels
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioOnlyLabel)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeVideoOnlyLabel)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OutputModeAudioAndVideoLabel)));
+            }
+            if (name == nameof(SelectedCaptureMode))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CaptureModeWindowLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CaptureModeAnyRegionLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRegionSelectionEnabled)));
             }
             if (name == nameof(VideoMergeMode))
             {
@@ -966,9 +1009,28 @@ namespace Screenshot.App.ViewModels
             }
         }
 
+        public void ApplySelectedWindow(int windowId, bool remember)
+        {
+            if (windowId <= 0) return;
+            SelectedWindowId = windowId;
+            UseCustomRegion = false;
+            if (remember)
+            {
+                _hasLastWindow = true;
+                _lastWindowId = windowId;
+            }
+        }
+
         private void RestoreLastRegion()
         {
             if (_isRecording) return;
+            if (SelectedCaptureMode == CaptureMode.Window)
+            {
+                if (!_hasLastWindow) return;
+                SelectedWindowId = _lastWindowId;
+                UseCustomRegion = false;
+                return;
+            }
             if (!_hasLastRegion) return;
             UseCustomRegion = true;
             RegionLeft = _lastRegionLeft.ToString();
@@ -1006,6 +1068,8 @@ namespace Screenshot.App.ViewModels
                     LogAppendMode = LogAppendMode,
                     SelectedOutputMode = SelectedOutputMode,
                     SelectedAudioCaptureMode = SelectedAudioCaptureMode,
+                    SelectedCaptureMode = SelectedCaptureMode,
+                    SelectedWindowId = SelectedWindowId,
                     RecordingDurationMinutes = RecordingDurationMinutes,
                     VideoMergeMode = VideoMergeMode
                 };
@@ -1066,12 +1130,8 @@ namespace Screenshot.App.ViewModels
             _logAppendMode = settings.LogAppendMode;
             _selectedOutputMode = settings.SelectedOutputMode;
             _selectedAudioCaptureMode = settings.SelectedAudioCaptureMode;
-            _useCustomRegion = settings.UseCustomRegion;
-            _regionLeftText = settings.RegionLeft;
-            _regionTopText = settings.RegionTop;
-            _regionWidthText = settings.RegionWidth;
-            _regionHeightText = settings.RegionHeight;
-            _recordingDurationMinutesText = settings.RecordingDurationMinutes;
+            _selectedCaptureMode = settings.SelectedCaptureMode;
+            _selectedWindowId = settings.SelectedWindowId;
             _useCustomRegion = settings.UseCustomRegion;
             _regionLeftText = settings.RegionLeft;
             _regionTopText = settings.RegionTop;
@@ -1079,6 +1139,22 @@ namespace Screenshot.App.ViewModels
             _regionHeightText = settings.RegionHeight;
             _recordingDurationMinutesText = settings.RecordingDurationMinutes;
             _videoMergeMode = settings.VideoMergeMode;
+
+            _hasLastRegion = false;
+            if (int.TryParse(_regionWidthText, out var w) && int.TryParse(_regionHeightText, out var h) && w > 0 && h > 0)
+            {
+                _hasLastRegion = true;
+                _lastRegionLeft = ParseInt(_regionLeftText);
+                _lastRegionTop = ParseInt(_regionTopText);
+                _lastRegionWidth = w;
+                _lastRegionHeight = h;
+            }
+
+            _hasLastWindow = _selectedWindowId > 0;
+            if (_hasLastWindow)
+            {
+                _lastWindowId = _selectedWindowId;
+            }
 
             Logger.Enabled = _logEnabled;
             Logger.SetLogFileMode(_logAppendMode ? 1 : 0);
@@ -1094,6 +1170,11 @@ namespace Screenshot.App.ViewModels
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LogAppendMode)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedOutputMode)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedAudioCaptureMode)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedCaptureMode)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedWindowId)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CaptureModeWindowLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CaptureModeAnyRegionLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRegionSelectionEnabled)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UseCustomRegion)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionLeft)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RegionTop)));
@@ -1130,12 +1211,14 @@ namespace Screenshot.App.ViewModels
             _logAppendMode = settings.LogAppendMode;
             _selectedOutputMode = settings.SelectedOutputMode;
             _selectedAudioCaptureMode = settings.SelectedAudioCaptureMode;
+            _selectedCaptureMode = settings.SelectedCaptureMode;
             _videoMergeMode = settings.VideoMergeMode;
             _useCustomRegion = settings.UseCustomRegion;
             _regionLeftText = settings.RegionLeft;
             _regionTopText = settings.RegionTop;
             _regionWidthText = settings.RegionWidth;
             _regionHeightText = settings.RegionHeight;
+            _selectedWindowId = settings.SelectedWindowId;
             if (int.TryParse(_regionWidthText, out var w) && int.TryParse(_regionHeightText, out var h) && w > 0 && h > 0)
             {
                 _hasLastRegion = true;
@@ -1143,6 +1226,11 @@ namespace Screenshot.App.ViewModels
                 _lastRegionTop = ParseInt(_regionTopText);
                 _lastRegionWidth = w;
                 _lastRegionHeight = h;
+            }
+            if (_selectedWindowId > 0)
+            {
+                _hasLastWindow = true;
+                _lastWindowId = _selectedWindowId;
             }
 
             Logger.SetLogDirectory(_logDirectory);
@@ -1165,6 +1253,8 @@ namespace Screenshot.App.ViewModels
                 LogAppendMode = LogAppendMode,
                 SelectedOutputMode = SelectedOutputMode,
                 SelectedAudioCaptureMode = SelectedAudioCaptureMode,
+                SelectedCaptureMode = SelectedCaptureMode,
+                SelectedWindowId = SelectedWindowId,
                 UseCustomRegion = UseCustomRegion,
                 RegionLeft = RegionLeft,
                 RegionTop = RegionTop,
@@ -1190,6 +1280,8 @@ namespace Screenshot.App.ViewModels
                 || name == nameof(LogAppendMode)
                 || name == nameof(SelectedOutputMode)
                 || name == nameof(SelectedAudioCaptureMode)
+                || name == nameof(SelectedCaptureMode)
+                || name == nameof(SelectedWindowId)
                 || name == nameof(UseCustomRegion)
                 || name == nameof(RegionLeft)
                 || name == nameof(RegionTop)

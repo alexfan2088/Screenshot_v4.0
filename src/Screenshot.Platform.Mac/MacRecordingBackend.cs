@@ -41,10 +41,19 @@ namespace Screenshot.Platform.Mac
             _videoPath = Path.Combine(options.OutputDirectory, $"{options.BaseFileName}.mp4");
             _audioPath = Path.Combine(options.OutputDirectory, $"{options.BaseFileName}.wav");
 
+            if (options.Config.CaptureMode == CaptureMode.Window && options.Config.WindowId <= 0)
+            {
+                throw new InvalidOperationException("Window capture selected but no window id provided.");
+            }
+
             var args = $"--output \"{_videoPath}\" --wav \"{_audioPath}\" --fps {options.Config.VideoFrameRate} --audio-mode {(options.Config.AudioCaptureMode == AudioCaptureMode.NativeSystemAudio ? "native" : "virtual")}";
             if (options.Config.RegionWidth > 0 && options.Config.RegionHeight > 0)
             {
                 args += $" --width {options.Config.RegionWidth} --height {options.Config.RegionHeight} --left {options.Config.RegionLeft} --top {options.Config.RegionTop}";
+            }
+            if (options.Config.CaptureMode == CaptureMode.Window && options.Config.WindowId > 0)
+            {
+                args += $" --window-id {options.Config.WindowId}";
             }
             if (options.Config.DisplayId > 0)
             {

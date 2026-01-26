@@ -19,6 +19,8 @@ namespace Screenshot.App.Services
         public bool LogAppendMode { get; set; } = false;
         public OutputMode SelectedOutputMode { get; set; } = OutputMode.AudioAndVideo;
         public AudioCaptureMode SelectedAudioCaptureMode { get; set; } = AudioCaptureMode.NativeSystemAudio;
+        public CaptureMode SelectedCaptureMode { get; set; } = CaptureMode.AnyRegion;
+        public int SelectedWindowId { get; set; }
         public bool UseCustomRegion { get; set; } = false;
         public string RegionLeft { get; set; } = "0";
         public string RegionTop { get; set; } = "0";

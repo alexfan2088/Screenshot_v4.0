@@ -14,6 +14,7 @@ struct RecorderConfig {
     let top: Int
     let displayId: UInt32
     let captureCurrentSpaceOnly: Bool
+    let windowId: Int
     let includeVideo: Bool
     let includeAudio: Bool
     let audioMode: String
@@ -29,9 +30,13 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
     private var audioFile: AVAudioFile?
     private var sessionStarted = false
     private var startTime: CMTime?
+    private var captureWidth: Int
+    private var captureHeight: Int
 
     init(config: RecorderConfig) {
         self.config = config
+        self.captureWidth = config.width
+        self.captureHeight = config.height
         super.init()
     }
 
@@ -47,7 +52,15 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
 
         let filter: SCContentFilter
-        if config.captureCurrentSpaceOnly {
+        if config.windowId > 0 {
+            guard let window = content.windows.first(where: { $0.windowID == config.windowId }) else {
+                throw NSError(domain: "RecorderHelper", code: 4, userInfo: [NSLocalizedDescriptionKey: "Window id not found: \(config.windowId)"])
+            }
+            filter = SCContentFilter(display: display, including: [window])
+            let displayScale = computeDisplayScale(displayId: display.displayID)
+            captureWidth = max(1, Int(round(window.frame.width * displayScale)))
+            captureHeight = max(1, Int(round(window.frame.height * displayScale)))
+        } else if config.captureCurrentSpaceOnly {
             filter = SCContentFilter(display: display, excludingWindows: [])
         } else {
             let windows = content.windows.filter { $0.isOnScreen }
@@ -61,13 +74,13 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
             }
         }
         let configuration = SCStreamConfiguration()
-        configuration.width = config.width
-        configuration.height = config.height
+        configuration.width = captureWidth
+        configuration.height = captureHeight
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(config.fps))
         configuration.capturesAudio = config.includeAudio
         configuration.sampleRate = 48000
         configuration.channelCount = 2
-        if config.width > 0 && config.height > 0 && (config.left != 0 || config.top != 0) {
+        if config.windowId == 0 && config.width > 0 && config.height > 0 && (config.left != 0 || config.top != 0) {
             configuration.sourceRect = CGRect(x: config.left, y: config.top, width: config.width, height: config.height)
         }
 
@@ -112,8 +125,8 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
         if config.includeVideo {
             let videoSettings: [String: Any] = [
                 AVVideoCodecKey: AVVideoCodecType.h264,
-                AVVideoWidthKey: config.width,
-                AVVideoHeightKey: config.height,
+                AVVideoWidthKey: captureWidth,
+                AVVideoHeightKey: captureHeight,
                 AVVideoCompressionPropertiesKey: [
                     AVVideoAverageBitRateKey: 6_000_000,
                     AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
@@ -123,8 +136,8 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
             videoInput.expectsMediaDataInRealTime = true
             let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: config.width,
-                kCVPixelBufferHeightKey as String: config.height
+                kCVPixelBufferWidthKey as String: captureWidth,
+                kCVPixelBufferHeightKey as String: captureHeight
             ])
 
             if writer.canAdd(videoInput) {
@@ -151,6 +164,14 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
         }
 
         self.assetWriter = writer
+    }
+
+    private func computeDisplayScale(displayId: UInt32) -> Double {
+        let bounds = CGDisplayBounds(displayId)
+        let pixelsWide = CGDisplayPixelsWide(displayId)
+        if bounds.size.width <= 0 { return 1.0 }
+        if pixelsWide <= 0 { return 1.0 }
+        return Double(pixelsWide) / bounds.size.width
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
@@ -289,6 +310,7 @@ struct RecorderHelper {
         var audioMode = "native"
         var displayId: UInt32 = 0
         var captureCurrentSpaceOnly = false
+        var windowId = 0
 
         var iterator = CommandLine.arguments.dropFirst().makeIterator()
         while let arg = iterator.next() {
@@ -311,6 +333,8 @@ struct RecorderHelper {
                 if let value = iterator.next(), let parsed = UInt32(value) { displayId = parsed }
             case "--current-space-only":
                 captureCurrentSpaceOnly = true
+            case "--window-id":
+                if let value = iterator.next(), let parsed = Int(value) { windowId = parsed }
             case "--no-video":
                 includeVideo = false
             case "--no-audio":
@@ -336,6 +360,7 @@ struct RecorderHelper {
             top: top,
             displayId: displayId,
             captureCurrentSpaceOnly: captureCurrentSpaceOnly,
+            windowId: windowId,
             includeVideo: includeVideo,
             includeAudio: includeAudio,
             audioMode: audioMode

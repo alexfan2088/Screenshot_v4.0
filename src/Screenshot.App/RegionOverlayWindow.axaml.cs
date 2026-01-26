@@ -21,11 +21,12 @@ namespace Screenshot.App
             AvaloniaXamlLoader.Load(this);
         }
 
-        public void SetScreenBounds(PixelRect bounds)
+        public void SetScreenBounds(PixelRect bounds, double scale)
         {
             Position = bounds.Position;
-            Width = bounds.Width;
-            Height = bounds.Height;
+            var safeScale = scale <= 0 ? 1.0 : scale;
+            Width = bounds.Width / safeScale;
+            Height = bounds.Height / safeScale;
         }
 
         public void SetRegion(PixelRect region)
