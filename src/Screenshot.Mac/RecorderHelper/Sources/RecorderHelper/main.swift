@@ -54,7 +54,7 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
             if windows.isEmpty {
                 filter = SCContentFilter(display: display, excludingWindows: [])
             } else {
-                filter = SCContentFilter(display: display, includingWindows: windows)
+                filter = SCContentFilter(display: display, including: windows)
                 if #available(macOS 14.2, *) {
                     filter.includeMenuBar = true
                 }
