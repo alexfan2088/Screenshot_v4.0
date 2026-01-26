@@ -10,6 +10,8 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
+using Screenshot.Core;
 
 namespace Screenshot.App
 {
@@ -216,18 +218,16 @@ namespace Screenshot.App
                 }
 
                 var displayArg = vm.CurrentDisplayId > 0 ? $"-D {vm.CurrentDisplayId} " : "";
-                var startInfo = new ProcessStartInfo
+                if (!await TryScreenCapture($"{displayArg}{regionArgs}-x -t jpg \"{imagePath}\""))
                 {
-                    FileName = "screencapture",
-                    Arguments = $"{displayArg}{regionArgs}-x -t jpg \"{imagePath}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using var process = Process.Start(startInfo);
-                if (process != null)
+                    if (!string.IsNullOrWhiteSpace(regionArgs))
+                    {
+                        await TryScreenCapture($"{regionArgs}-x -t jpg \"{imagePath}\"");
+                    }
+                }
+                if (!File.Exists(imagePath))
                 {
-                    await process.WaitForExitAsync();
+                    await TryScreenCapture($"-x -t jpg \"{imagePath}\"");
                 }
 
                 if (!File.Exists(imagePath))
@@ -361,6 +361,45 @@ namespace Screenshot.App
         private static int ParseInt(string value)
         {
             return int.TryParse(value, out var result) ? result : 0;
+        }
+
+        private static async Task<bool> TryScreenCapture(string arguments)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "screencapture",
+                    Arguments = arguments,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process == null) return false;
+                var stdOutTask = process.StandardOutput.ReadToEndAsync();
+                var stdErrTask = process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+                var stdOut = await stdOutTask;
+                var stdErr = await stdErrTask;
+                if (process.ExitCode != 0)
+                {
+                    Logger.WriteWarning($"screencapture exit code {process.ExitCode}. args: {arguments}. stdout: {stdOut}. stderr: {stdErr}");
+                    return false;
+                }
+                if (!string.IsNullOrWhiteSpace(stdErr))
+                {
+                    Logger.WriteWarning($"screencapture stderr: {stdErr}");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteError("screencapture failed", ex);
+                return false;
+            }
         }
 
         private void UpdateCurrentDisplayId()
