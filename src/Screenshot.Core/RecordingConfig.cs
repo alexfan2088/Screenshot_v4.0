@@ -38,6 +38,7 @@ namespace Screenshot.Core
         public int RegionTop { get; set; }
         public int RegionWidth { get; set; }
         public int RegionHeight { get; set; }
+        public int DisplayId { get; set; }
 
         // 截图参数
         public double ScreenChangeRate { get; set; } = 11.12; // 屏幕变化率 1-1000%，默认11.12%

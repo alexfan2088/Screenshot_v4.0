@@ -4,6 +4,10 @@ using Screenshot.App.ViewModels;
 using Avalonia;
 using Avalonia.Input;
 using Avalonia.Threading;
+using Avalonia.Media.Imaging;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.ComponentModel;
 using System.Linq;
 
@@ -22,10 +26,13 @@ namespace Screenshot.App
             {
                 _isOpened = true;
                 PositionTopCenter();
+                UpdateCurrentDisplayId();
                 UpdateRegionOverlay();
             };
             HookNumericInputBehavior();
             DataContextChanged += OnDataContextChanged;
+            Activated += (_, _) => UpdateCurrentDisplayId();
+            PositionChanged += (_, _) => UpdateCurrentDisplayId();
             Closed += (_, _) => _regionOverlay?.Close();
         }
 
@@ -153,6 +160,7 @@ namespace Screenshot.App
         private async void OnSelectRegionClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             if (DataContext is not MainViewModel vm) return;
+            UpdateCurrentDisplayId();
             var window = new RegionSelectionWindow();
             _regionOverlay?.Hide();
             var virtualBounds = GetVirtualScreenBounds();
@@ -173,6 +181,79 @@ namespace Screenshot.App
             }
             _regionOverlay?.Show();
             Activate();
+        }
+
+        private async void OnSingleScreenshotClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            if (DataContext is not MainViewModel vm) return;
+            if (!OperatingSystem.IsMacOS())
+            {
+                vm.StatusMessage = "截图仅支持 macOS";
+                return;
+            }
+
+            try
+            {
+                UpdateCurrentDisplayId();
+                Directory.CreateDirectory(vm.OutputDirectory);
+                var fileName = $"截图{DateTime.Now:yyMMddHHmmssfff}.jpg";
+                var imagePath = Path.Combine(vm.OutputDirectory, fileName);
+
+                var regionArgs = "";
+                if (vm.UseCustomRegion)
+                {
+                    var left = ParseInt(vm.RegionLeft);
+                    var top = ParseInt(vm.RegionTop);
+                    var width = ParseInt(vm.RegionWidth);
+                    var height = ParseInt(vm.RegionHeight);
+                    if (width > 0 && height > 0)
+                    {
+                        regionArgs = $"-R {left},{top},{width},{height} ";
+                    }
+                }
+
+                var displayArg = vm.CurrentDisplayId > 0 ? $"-D {vm.CurrentDisplayId} " : "";
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "screencapture",
+                    Arguments = $"{displayArg}{regionArgs}-x -t jpg \"{imagePath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process != null)
+                {
+                    await process.WaitForExitAsync();
+                }
+
+                if (!File.Exists(imagePath))
+                {
+                    vm.StatusMessage = "截图失败";
+                    return;
+                }
+
+                var topLevel = TopLevel.GetTopLevel(this);
+                if (OperatingSystem.IsMacOS())
+                {
+                    var escapedPath = imagePath.Replace("\"", "\\\"");
+                    var script = $"set the clipboard to (read (POSIX file \\\"{escapedPath}\\\") as JPEG picture)";
+                    var clipInfo = new ProcessStartInfo
+                    {
+                        FileName = "osascript",
+                        Arguments = $"-e \"{script}\"",
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    Process.Start(clipInfo);
+                }
+
+                vm.StatusMessage = $"已截图: {imagePath}";
+            }
+            catch (Exception ex)
+            {
+                vm.StatusMessage = $"截图失败: {ex.Message}";
+            }
         }
 
         private PixelRect? GetVirtualScreenBounds()
@@ -251,9 +332,13 @@ namespace Screenshot.App
             var top = ParseInt(_vm.RegionTop);
             var width = ParseInt(_vm.RegionWidth);
             var height = ParseInt(_vm.RegionHeight);
-            var rect = useCustom && width > 0 && height > 0
-                ? new PixelRect(left, top, width, height)
-                : new PixelRect(0, 0, bounds.Value.Width, bounds.Value.Height);
+            if (!useCustom || width <= 0 || height <= 0)
+            {
+                _vm.ApplyCustomRegion(0, 0, bounds.Value.Width, bounds.Value.Height, remember: true);
+                return;
+            }
+
+            var rect = new PixelRect(left, top, width, height);
 
             EnsureRegionOverlay();
             if (_regionOverlay == null) return;
@@ -267,12 +352,63 @@ namespace Screenshot.App
             if (_regionOverlay != null) return;
             if (!_isOpened) return;
             _regionOverlay = new RegionOverlayWindow();
-            _regionOverlay.Show();
+            _regionOverlay.Show(this);
         }
 
         private static int ParseInt(string value)
         {
             return int.TryParse(value, out var result) ? result : 0;
         }
+
+        private void UpdateCurrentDisplayId()
+        {
+            if (_vm == null) return;
+            if (!OperatingSystem.IsMacOS()) return;
+            var id = GetDisplayIdForWindow();
+            if (id > 0)
+            {
+                _vm.UpdateCurrentDisplayId(id);
+            }
+        }
+
+        private int GetDisplayIdForWindow()
+        {
+            var handle = this.TryGetPlatformHandle();
+            if (handle == null || handle.Handle == IntPtr.Zero) return 0;
+            var nsWindow = handle.Handle;
+            var selScreen = sel_registerName("screen");
+            var screen = objc_msgSend(nsWindow, selScreen);
+            if (screen == IntPtr.Zero) return 0;
+            var selDeviceDesc = sel_registerName("deviceDescription");
+            var deviceDesc = objc_msgSend(screen, selDeviceDesc);
+            if (deviceDesc == IntPtr.Zero) return 0;
+
+            var nsString = objc_getClass("NSString");
+            var selStringWithUTF8 = sel_registerName("stringWithUTF8String:");
+            var key = objc_msgSend_str(nsString, selStringWithUTF8, "NSScreenNumber");
+            var selObjectForKey = sel_registerName("objectForKey:");
+            var number = objc_msgSend_ptr(deviceDesc, selObjectForKey, key);
+            if (number == IntPtr.Zero) return 0;
+            var selUnsignedIntValue = sel_registerName("unsignedIntValue");
+            return (int)objc_msgSend_uint(number, selUnsignedIntValue);
+        }
+
+        [DllImport("/usr/lib/libobjc.A.dylib")]
+        private static extern IntPtr objc_getClass(string name);
+
+        [DllImport("/usr/lib/libobjc.A.dylib")]
+        private static extern IntPtr sel_registerName(string name);
+
+        [DllImport("/usr/lib/libobjc.A.dylib")]
+        private static extern IntPtr objc_msgSend(IntPtr receiver, IntPtr selector);
+
+        [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")]
+        private static extern IntPtr objc_msgSend_str(IntPtr receiver, IntPtr selector, string arg1);
+
+        [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")]
+        private static extern IntPtr objc_msgSend_ptr(IntPtr receiver, IntPtr selector, IntPtr arg1);
+
+        [DllImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_msgSend")]
+        private static extern uint objc_msgSend_uint(IntPtr receiver, IntPtr selector);
     }
 }

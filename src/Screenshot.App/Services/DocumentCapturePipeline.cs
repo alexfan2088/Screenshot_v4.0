@@ -241,6 +241,7 @@ namespace Screenshot.App.Services
         {
             if (OperatingSystem.IsMacOS())
             {
+                var displayArg = _config.DisplayId > 0 ? $"-D {_config.DisplayId} " : "";
                 var regionArgs = "";
                 if (_config.UseCustomRegion && _config.RegionWidth > 0 && _config.RegionHeight > 0)
                 {
@@ -249,7 +250,7 @@ namespace Screenshot.App.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "screencapture",
-                    Arguments = $"{regionArgs}-x -t jpg \"{imagePath}\"",
+                    Arguments = $"{displayArg}{regionArgs}-x -t jpg \"{imagePath}\"",
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };

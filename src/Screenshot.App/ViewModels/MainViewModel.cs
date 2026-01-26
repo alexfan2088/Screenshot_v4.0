@@ -54,6 +54,7 @@ namespace Screenshot.App.ViewModels
         private int _lastRegionHeight;
         private string _recordingDurationMinutesText = "60";
         private int _videoMergeMode = 1;
+        private int _currentDisplayId;
         private double _currentChangeRate;
         private int _captureCount;
         private int _nextCheckSeconds;
@@ -178,6 +179,12 @@ namespace Screenshot.App.ViewModels
         {
             get => _videoMergeMode;
             set => SetField(ref _videoMergeMode, value);
+        }
+
+        public int CurrentDisplayId
+        {
+            get => _currentDisplayId;
+            private set => SetField(ref _currentDisplayId, value);
         }
 
         public bool UseCustomRegion
@@ -497,7 +504,8 @@ namespace Screenshot.App.ViewModels
                 RegionLeft = ParseInt(RegionLeft),
                 RegionTop = ParseInt(RegionTop),
                 RegionWidth = ParseInt(RegionWidth),
-                RegionHeight = ParseInt(RegionHeight)
+                RegionHeight = ParseInt(RegionHeight),
+                DisplayId = CurrentDisplayId
             };
 
             var sanitizedName = SanitizeSessionName(SessionName);
@@ -961,6 +969,12 @@ namespace Screenshot.App.ViewModels
             RegionHeight = _lastRegionHeight.ToString();
         }
 
+        public void UpdateCurrentDisplayId(int displayId)
+        {
+            if (displayId <= 0) return;
+            CurrentDisplayId = displayId;
+        }
+
         public void ExportSettingsTo(string path)
         {
             if (_isRecording) return;
@@ -1104,6 +1118,19 @@ namespace Screenshot.App.ViewModels
             _selectedOutputMode = settings.SelectedOutputMode;
             _selectedAudioCaptureMode = settings.SelectedAudioCaptureMode;
             _videoMergeMode = settings.VideoMergeMode;
+            _useCustomRegion = settings.UseCustomRegion;
+            _regionLeftText = settings.RegionLeft;
+            _regionTopText = settings.RegionTop;
+            _regionWidthText = settings.RegionWidth;
+            _regionHeightText = settings.RegionHeight;
+            if (int.TryParse(_regionWidthText, out var w) && int.TryParse(_regionHeightText, out var h) && w > 0 && h > 0)
+            {
+                _hasLastRegion = true;
+                _lastRegionLeft = ParseInt(_regionLeftText);
+                _lastRegionTop = ParseInt(_regionTopText);
+                _lastRegionWidth = w;
+                _lastRegionHeight = h;
+            }
 
             Logger.SetLogDirectory(_logDirectory);
             Logger.Enabled = _logEnabled;

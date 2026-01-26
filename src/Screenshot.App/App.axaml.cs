@@ -15,10 +15,10 @@ namespace Screenshot.App
         {
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                desktop.MainWindow = new MainWindow
-                {
-                    DataContext = new ViewModels.MainViewModel()
-                };
+                var mainWindow = new MainWindow();
+                desktop.MainWindow = mainWindow;
+                desktop.Exit += (_, _) => mainWindow.Close();
+                mainWindow.DataContext = new ViewModels.MainViewModel();
             }
 
             base.OnFrameworkInitializationCompleted();

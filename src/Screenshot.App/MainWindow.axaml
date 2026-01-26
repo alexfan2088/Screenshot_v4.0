@@ -65,6 +65,7 @@
 
         <Button Content="开始" Command="{Binding StartCommand}" Background="#1E8E5A" Foreground="#FFFFFF" Padding="8,1" FontSize="12" />
         <Button Content="停止" Command="{Binding StopCommand}" Background="#B33B3B" Foreground="#FFFFFF" Padding="8,1" FontSize="12" />
+        <Button Content="截图" Click="OnSingleScreenshotClick" IsEnabled="{Binding IsEditingUnlocked}" Padding="6,1" FontSize="12" />
         <Button Content="选择" Click="OnSelectRegionClick" IsEnabled="{Binding IsEditingUnlocked}" Padding="6,1" FontSize="12" />
         <Button Content="恢复" Command="{Binding ResetSettingsCommand}" IsEnabled="{Binding IsEditingUnlocked}" Padding="6,1" FontSize="12" />
 
