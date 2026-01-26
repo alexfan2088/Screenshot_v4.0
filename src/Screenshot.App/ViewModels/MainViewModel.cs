@@ -56,7 +56,6 @@ namespace Screenshot.App.ViewModels
         private int _videoMergeMode = 1;
         private int _currentDisplayId;
         private bool _captureCurrentSpaceOnly = true;
-        private bool _captureCurrentSpaceOnly = true;
         private double _currentChangeRate;
         private int _captureCount;
         private int _nextCheckSeconds;
