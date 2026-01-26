@@ -50,6 +50,10 @@ namespace Screenshot.Platform.Mac
             {
                 args += $" --display-id {options.Config.DisplayId}";
             }
+            if (options.Config.CaptureCurrentSpaceOnly)
+            {
+                args += " --current-space-only";
+            }
             if (options.OutputMode == OutputMode.AudioOnly)
             {
                 args += " --no-video";

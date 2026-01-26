@@ -13,6 +13,7 @@ struct RecorderConfig {
     let left: Int
     let top: Int
     let displayId: UInt32
+    let captureCurrentSpaceOnly: Bool
     let includeVideo: Bool
     let includeAudio: Bool
     let audioMode: String
@@ -39,7 +40,7 @@ final class RecorderService: NSObject, SCStreamOutput, SCStreamDelegate {
             throw NSError(domain: "RecorderHelper", code: 2, userInfo: [NSLocalizedDescriptionKey: "audioMode only supports native for now"])
         }
 
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: config.captureCurrentSpaceOnly)
         let display = content.displays.first { $0.displayID == config.displayId } ?? content.displays.first
         guard let display else {
             throw NSError(domain: "RecorderHelper", code: 1, userInfo: [NSLocalizedDescriptionKey: "No display available"])
@@ -274,6 +275,7 @@ struct RecorderHelper {
         var includeAudio = true
         var audioMode = "native"
         var displayId: UInt32 = 0
+        var captureCurrentSpaceOnly = false
 
         var iterator = CommandLine.arguments.dropFirst().makeIterator()
         while let arg = iterator.next() {
@@ -294,6 +296,8 @@ struct RecorderHelper {
                 if let value = iterator.next(), let parsed = Int(value) { top = parsed }
             case "--display-id":
                 if let value = iterator.next(), let parsed = UInt32(value) { displayId = parsed }
+            case "--current-space-only":
+                captureCurrentSpaceOnly = true
             case "--no-video":
                 includeVideo = false
             case "--no-audio":
@@ -318,6 +322,7 @@ struct RecorderHelper {
             left: left,
             top: top,
             displayId: displayId,
+            captureCurrentSpaceOnly: captureCurrentSpaceOnly,
             includeVideo: includeVideo,
             includeAudio: includeAudio,
             audioMode: audioMode
