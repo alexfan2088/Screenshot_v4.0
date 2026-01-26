@@ -1,0 +1,16 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Screenshot.App.WindowPickerWindow"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        Topmost="True">
+  <Canvas>
+    <Border x:Name="SelectionBorder"
+            BorderBrush="#26A7FF"
+            Background="#3326A7FF"
+            BorderThickness="2"
+            IsVisible="False" />
+  </Canvas>
+</Window>

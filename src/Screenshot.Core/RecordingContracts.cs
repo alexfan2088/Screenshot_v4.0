@@ -12,6 +12,12 @@ namespace Screenshot.Core
         AudioAndVideo
     }
 
+    public enum CaptureMode
+    {
+        AnyRegion,
+        Window
+    }
+
     public sealed record RecordingSessionOptions(
         string OutputDirectory,
         string BaseFileName,
