@@ -114,6 +114,7 @@ namespace Screenshot.App.Services
                 if (!File.Exists(tempPath))
                 {
                     Logger.WriteWarning($"Screenshot not captured: {tempPath}");
+                    CaptureCompleted?.Invoke(new CaptureStatus(_captureIndex, 0, _nextIntervalAtUtc));
                     return;
                 }
 
@@ -237,39 +238,80 @@ namespace Screenshot.App.Services
             _lastIntervalImage = current.Clone();
         }
 
-        private async Task CaptureScreenAsync(string imagePath, CancellationToken cancellationToken)
+        private async Task<bool> CaptureScreenAsync(string imagePath, CancellationToken cancellationToken)
         {
             if (OperatingSystem.IsMacOS())
             {
-                var displayArg = _config.DisplayId > 0 ? $"-D {_config.DisplayId} " : "";
                 var regionArgs = "";
                 if (_config.UseCustomRegion && _config.RegionWidth > 0 && _config.RegionHeight > 0)
                 {
                     regionArgs = $"-R {_config.RegionLeft},{_config.RegionTop},{_config.RegionWidth},{_config.RegionHeight} ";
                 }
-                var startInfo = new ProcessStartInfo
-                {
-                    FileName = "screencapture",
-                    Arguments = $"{displayArg}{regionArgs}-x -t jpg \"{imagePath}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
 
-                using var process = Process.Start(startInfo);
-                if (process != null)
+                // Try most specific first, then fall back to more permissive captures.
+                var displayArg = _config.DisplayId > 0 ? $"-D {_config.DisplayId} " : "";
+                if (await TryScreenCapture($"{displayArg}{regionArgs}-x -t jpg \"{imagePath}\"", cancellationToken) && File.Exists(imagePath))
                 {
-                    await process.WaitForExitAsync(cancellationToken);
+                    return true;
                 }
-                return;
+
+                if (!string.IsNullOrWhiteSpace(regionArgs))
+                {
+                    if (await TryScreenCapture($"{regionArgs}-x -t jpg \"{imagePath}\"", cancellationToken) && File.Exists(imagePath))
+                    {
+                        return true;
+                    }
+                }
+
+                return await TryScreenCapture($"-x -t jpg \"{imagePath}\"", cancellationToken) && File.Exists(imagePath);
             }
 
             if (OperatingSystem.IsWindows())
             {
                 CaptureWindowsScreenshot(imagePath, _config);
-                return;
+                return true;
             }
 
             throw new PlatformNotSupportedException("Screenshot capture not implemented for this OS yet.");
+        }
+
+        private static async Task<bool> TryScreenCapture(string arguments, CancellationToken cancellationToken)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "screencapture",
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true
+            };
+
+            using var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                Logger.WriteWarning("screencapture failed to start.");
+                return false;
+            }
+
+            var stdOutTask = process.StandardOutput.ReadToEndAsync();
+            var stdErrTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync(cancellationToken);
+            var stdOut = await stdOutTask;
+            var stdErr = await stdErrTask;
+
+            if (process.ExitCode != 0)
+            {
+                Logger.WriteWarning($"screencapture exit code {process.ExitCode}. args: {arguments}. stdout: {stdOut}. stderr: {stdErr}");
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(stdErr))
+            {
+                Logger.WriteWarning($"screencapture stderr: {stdErr}");
+            }
+
+            return true;
         }
 
         [SupportedOSPlatform("windows")]
