@@ -25,7 +25,7 @@ ln -s /Applications "$DMG_DIR/Applications"
 rm -f "$DMG_TMP" "$DMG_PATH"
 hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_DIR" -ov -format UDRW "$DMG_TMP" >/dev/null
 
-ATTACH_INFO=$(hdiutil attach "$DMG_TMP" -readwrite -nobrowse -noverify)
+ATTACH_INFO=$(hdiutil attach "$DMG_TMP" -readwrite -nobrowse -noverify -owners on)
 MOUNT_DIR=$(echo "$ATTACH_INFO" | awk '/Volumes/ {print $3; exit}')
 DEVICE=$(echo "$ATTACH_INFO" | awk '/^\/dev\// {print $1; exit}')
 if [ -z "$MOUNT_DIR" ]; then
