@@ -25,18 +25,24 @@ ln -s /Applications "$DMG_DIR/Applications"
 rm -f "$DMG_TMP" "$DMG_PATH"
 hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_DIR" -ov -format UDRW "$DMG_TMP" >/dev/null
 
-MOUNT_DIR=$(hdiutil attach "$DMG_TMP" -nobrowse -noverify | awk '/Volumes/ {print $3; exit}')
+ATTACH_INFO=$(hdiutil attach "$DMG_TMP" -readwrite -nobrowse -noverify)
+MOUNT_DIR=$(echo "$ATTACH_INFO" | awk '/Volumes/ {print $3; exit}')
+DEVICE=$(echo "$ATTACH_INFO" | awk '/^\/dev\// {print $1; exit}')
 if [ -z "$MOUNT_DIR" ]; then
   echo "Failed to mount DMG." >&2
   exit 1
 fi
 
-mkdir -p "$MOUNT_DIR/.background"
-if [ -f "$BG_SRC" ]; then
-  cp "$BG_SRC" "$MOUNT_DIR/.background/background.png"
-fi
+WRITABLE=1
+touch "$MOUNT_DIR/.writable_test" 2>/dev/null || WRITABLE=0
+if [ "$WRITABLE" -eq 1 ]; then
+  rm -f "$MOUNT_DIR/.writable_test"
+  mkdir -p "$MOUNT_DIR/.background"
+  if [ -f "$BG_SRC" ]; then
+    cp "$BG_SRC" "$MOUNT_DIR/.background/background.png" || true
+  fi
 
-osascript <<EOF
+  osascript <<EOF
 tell application "Finder"
   tell disk "$APP_NAME"
     open
@@ -57,8 +63,12 @@ tell application "Finder"
   end tell
 end tell
 EOF
+else
+  echo "Warning: DMG mounted read-only, skipping background/layout." >&2
+fi
 
-hdiutil detach "$MOUNT_DIR" -quiet
+hdiutil detach "${DEVICE:-$MOUNT_DIR}" -quiet -force || true
+sleep 1
 hdiutil convert "$DMG_TMP" -format UDZO -o "$DMG_PATH" >/dev/null
 rm -f "$DMG_TMP"
 
