@@ -43,6 +43,7 @@ namespace Screenshot.App.ViewModels
         private string _screenChangeRateText = "11.12";
         private bool _logEnabled = true;
         private bool _logAppendMode = false;
+        private bool _quickScreenshotEnabled = true;
         private bool _useCustomRegion = false;
         private string _regionLeftText = "0";
         private string _regionTopText = "0";
@@ -185,6 +186,12 @@ namespace Screenshot.App.ViewModels
         {
             get => _recordingDurationMinutesText;
             set => SetField(ref _recordingDurationMinutesText, value);
+        }
+
+        public bool QuickScreenshotEnabled
+        {
+            get => _quickScreenshotEnabled;
+            set => SetField(ref _quickScreenshotEnabled, value);
         }
 
         public int VideoMergeMode
@@ -353,6 +360,7 @@ namespace Screenshot.App.ViewModels
         public string OutputModeAudioOnlyLabel => SelectedOutputMode == OutputMode.AudioOnly ? "✓ 只生成音频文件" : "只生成音频文件";
         public string OutputModeVideoOnlyLabel => SelectedOutputMode == OutputMode.VideoOnly ? "✓ 只生成视频文件" : "只生成视频文件";
         public string OutputModeAudioAndVideoLabel => SelectedOutputMode == OutputMode.AudioAndVideo ? "✓ 生成音频+视频文件" : "生成音频+视频文件";
+        public string QuickScreenshotLabel => QuickScreenshotEnabled ? "✓ 快捷截图" : "快捷截图";
         public string CaptureModeWindowLabel => SelectedCaptureMode == CaptureMode.Window ? "✓ 录制窗口方式" : "录制窗口方式";
         public string CaptureModeAnyRegionLabel => SelectedCaptureMode == CaptureMode.AnyRegion ? "✓ 录制任意区域方式" : "录制任意区域方式";
         public string VideoMergeLiveLabel => VideoMergeMode == 1 ? "✓ 边录边合（推荐，秒级完成）" : "边录边合（推荐，秒级完成）";
@@ -432,6 +440,7 @@ namespace Screenshot.App.ViewModels
         public ICommand SetOutputModeAudioAndVideoCommand { get; }
         public ICommand SetCaptureModeWindowCommand { get; }
         public ICommand SetCaptureModeAnyRegionCommand { get; }
+        public ICommand ToggleQuickScreenshotCommand { get; }
         public ICommand SetVideoMergeLiveCommand { get; }
         public ICommand SetVideoMergePostCommand { get; }
         public ICommand ToggleKeepJpgCommand { get; }
@@ -497,6 +506,7 @@ namespace Screenshot.App.ViewModels
             SetOutputModeAudioAndVideoCommand = new DelegateCommand(() => SelectedOutputMode = OutputMode.AudioAndVideo);
             SetCaptureModeWindowCommand = new DelegateCommand(() => SelectedCaptureMode = CaptureMode.Window);
             SetCaptureModeAnyRegionCommand = new DelegateCommand(() => SelectedCaptureMode = CaptureMode.AnyRegion);
+            ToggleQuickScreenshotCommand = new DelegateCommand(() => QuickScreenshotEnabled = !QuickScreenshotEnabled);
             SetVideoMergeLiveCommand = new DelegateCommand(() => VideoMergeMode = 1);
             SetVideoMergePostCommand = new DelegateCommand(() => VideoMergeMode = 0);
             ToggleKeepJpgCommand = new DelegateCommand(() => KeepJpgFiles = !KeepJpgFiles);
@@ -942,6 +952,10 @@ namespace Screenshot.App.ViewModels
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratePptLabel)));
             }
+            if (name == nameof(QuickScreenshotEnabled))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QuickScreenshotLabel)));
+            }
             if (name == nameof(KeepJpgFiles))
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgLabel)));
@@ -1055,21 +1069,22 @@ namespace Screenshot.App.ViewModels
             if (_isRecording) return;
             try
             {
-                var settings = new AppSettings
-                {
-                    OutputDirectory = OutputDirectory,
-                    LogDirectory = LogDirectory,
-                    SessionName = SessionName,
-                    GeneratePpt = GeneratePpt,
-                    KeepJpgFiles = KeepJpgFiles,
-                    ScreenshotInterval = ScreenshotInterval,
-                    ScreenChangeRate = ScreenChangeRate,
-                    LogEnabled = LogEnabled,
-                    LogAppendMode = LogAppendMode,
-                    SelectedOutputMode = SelectedOutputMode,
-                    SelectedAudioCaptureMode = SelectedAudioCaptureMode,
-                    SelectedCaptureMode = SelectedCaptureMode,
-                    SelectedWindowId = SelectedWindowId,
+            var settings = new AppSettings
+            {
+                OutputDirectory = OutputDirectory,
+                LogDirectory = LogDirectory,
+                SessionName = SessionName,
+                GeneratePpt = GeneratePpt,
+                KeepJpgFiles = KeepJpgFiles,
+                ScreenshotInterval = ScreenshotInterval,
+                ScreenChangeRate = ScreenChangeRate,
+                LogEnabled = LogEnabled,
+                LogAppendMode = LogAppendMode,
+                QuickScreenshotEnabled = QuickScreenshotEnabled,
+                SelectedOutputMode = SelectedOutputMode,
+                SelectedAudioCaptureMode = SelectedAudioCaptureMode,
+                SelectedCaptureMode = SelectedCaptureMode,
+                SelectedWindowId = SelectedWindowId,
                     RecordingDurationMinutes = RecordingDurationMinutes,
                     VideoMergeMode = VideoMergeMode
                 };
@@ -1128,6 +1143,7 @@ namespace Screenshot.App.ViewModels
             _screenChangeRateText = settings.ScreenChangeRate;
             _logEnabled = settings.LogEnabled;
             _logAppendMode = settings.LogAppendMode;
+            _quickScreenshotEnabled = settings.QuickScreenshotEnabled;
             _selectedOutputMode = settings.SelectedOutputMode;
             _selectedAudioCaptureMode = settings.SelectedAudioCaptureMode;
             _selectedCaptureMode = settings.SelectedCaptureMode;
@@ -1172,6 +1188,8 @@ namespace Screenshot.App.ViewModels
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedAudioCaptureMode)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedCaptureMode)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedWindowId)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QuickScreenshotEnabled)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QuickScreenshotLabel)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CaptureModeWindowLabel)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CaptureModeAnyRegionLabel)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRegionSelectionEnabled)));
@@ -1209,6 +1227,7 @@ namespace Screenshot.App.ViewModels
             _screenChangeRateText = settings.ScreenChangeRate;
             _logEnabled = settings.LogEnabled;
             _logAppendMode = settings.LogAppendMode;
+            _quickScreenshotEnabled = settings.QuickScreenshotEnabled;
             _selectedOutputMode = settings.SelectedOutputMode;
             _selectedAudioCaptureMode = settings.SelectedAudioCaptureMode;
             _selectedCaptureMode = settings.SelectedCaptureMode;
@@ -1251,6 +1270,7 @@ namespace Screenshot.App.ViewModels
                 ScreenChangeRate = ScreenChangeRate,
                 LogEnabled = LogEnabled,
                 LogAppendMode = LogAppendMode,
+                QuickScreenshotEnabled = QuickScreenshotEnabled,
                 SelectedOutputMode = SelectedOutputMode,
                 SelectedAudioCaptureMode = SelectedAudioCaptureMode,
                 SelectedCaptureMode = SelectedCaptureMode,
@@ -1278,6 +1298,7 @@ namespace Screenshot.App.ViewModels
                 || name == nameof(ScreenChangeRate)
                 || name == nameof(LogEnabled)
                 || name == nameof(LogAppendMode)
+                || name == nameof(QuickScreenshotEnabled)
                 || name == nameof(SelectedOutputMode)
                 || name == nameof(SelectedAudioCaptureMode)
                 || name == nameof(SelectedCaptureMode)

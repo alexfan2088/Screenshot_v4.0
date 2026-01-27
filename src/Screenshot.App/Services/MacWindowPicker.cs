@@ -36,9 +36,9 @@ namespace Screenshot.App.Services
             return false;
         }
 
-        public static bool TryGetWindowBounds(int windowId, out MacWindowInfo info)
+        public static bool TryGetWindowBounds(int windowId, out MacWindowInfo? info)
         {
-            info = default;
+            info = null;
             if (!OperatingSystem.IsMacOS()) return false;
             if (windowId <= 0) return false;
 
@@ -59,7 +59,7 @@ namespace Screenshot.App.Services
                     if (width <= 0 || height <= 0) continue;
                     info = new MacWindowInfo((int)foundId, x, y, width, height);
                     return true;
-                }
+            }
             }
             finally
             {

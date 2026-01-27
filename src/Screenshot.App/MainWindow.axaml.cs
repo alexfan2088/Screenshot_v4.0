@@ -231,6 +231,10 @@ namespace Screenshot.App
                 var width = Math.Max(1, right - left);
                 var height = Math.Max(1, bottom - top);
                 vm.ApplyCustomRegion(left, top, width, height, remember: true);
+                if (vm.QuickScreenshotEnabled)
+                {
+                    await CaptureScreenshotAsync(vm, requireRegion: true);
+                }
             }
             _regionOverlay?.Show();
             Activate();
@@ -239,14 +243,24 @@ namespace Screenshot.App
         private async void OnSingleScreenshotClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
             if (DataContext is not MainViewModel vm) return;
+            await CaptureScreenshotAsync(vm, requireRegion: false);
+        }
+
+        private async Task CaptureScreenshotAsync(MainViewModel vm, bool requireRegion)
+        {
             if (!OperatingSystem.IsMacOS())
             {
                 vm.StatusMessage = "截图仅支持 macOS";
                 return;
             }
-            if (vm.SelectedCaptureMode == CaptureMode.Window && vm.SelectedWindowId <= 0)
+            if (vm.SelectedCaptureMode == CaptureMode.Window)
             {
-                vm.StatusMessage = "请先选择要录制的窗口";
+                vm.StatusMessage = "快捷截图不支持窗口模式";
+                return;
+            }
+            if (requireRegion && (!vm.UseCustomRegion || ParseInt(vm.RegionWidth) <= 0 || ParseInt(vm.RegionHeight) <= 0))
+            {
+                vm.StatusMessage = "请先选择截图区域";
                 return;
             }
 
@@ -260,12 +274,7 @@ namespace Screenshot.App
                 var imagePath = Path.Combine(targetDir, fileName);
 
                 var regionArgs = "";
-                var windowArg = "";
-                if (vm.SelectedCaptureMode == CaptureMode.Window && vm.SelectedWindowId > 0)
-                {
-                    windowArg = $"-l {vm.SelectedWindowId} ";
-                }
-                else if (vm.UseCustomRegion)
+                if (vm.UseCustomRegion)
                 {
                     var left = ParseInt(vm.RegionLeft);
                     var top = ParseInt(vm.RegionTop);
@@ -278,20 +287,21 @@ namespace Screenshot.App
                 }
 
                 var displayArg = vm.CurrentDisplayId > 0 ? $"-D {vm.CurrentDisplayId} " : "";
-                if (!await TryScreenCapture($"{displayArg}{windowArg}{regionArgs}-x -t png \"{imagePath}\""))
+                var captureArgs = $"{displayArg}{regionArgs}-x -t png \"{imagePath}\"";
+                if (!await TryScreenCapture(captureArgs))
                 {
-                    if (!string.IsNullOrWhiteSpace(windowArg))
-                    {
-                        await TryScreenCapture($"{windowArg}-x -t png \"{imagePath}\"");
-                    }
-                    else if (!string.IsNullOrWhiteSpace(regionArgs))
+                    if (!string.IsNullOrWhiteSpace(regionArgs))
                     {
                         await TryScreenCapture($"{regionArgs}-x -t png \"{imagePath}\"");
                     }
                 }
-                if (!File.Exists(imagePath) && string.IsNullOrWhiteSpace(windowArg))
+
+                if (!File.Exists(imagePath))
                 {
-                    await TryScreenCapture($"-x -t png \"{imagePath}\"");
+                    if (!requireRegion)
+                    {
+                        await TryScreenCapture($"-x -t png \"{imagePath}\"");
+                    }
                 }
 
                 if (!File.Exists(imagePath))
@@ -300,7 +310,6 @@ namespace Screenshot.App
                     return;
                 }
 
-                var topLevel = TopLevel.GetTopLevel(this);
                 if (OperatingSystem.IsMacOS())
                 {
                     var escapedPath = imagePath.Replace("\"", "\\\"");
@@ -410,7 +419,7 @@ namespace Screenshot.App
                     return;
                 }
 
-                if (!MacWindowPicker.TryGetWindowBounds(_vm.SelectedWindowId, out var windowBounds))
+                if (!MacWindowPicker.TryGetWindowBounds(_vm.SelectedWindowId, out var windowBounds) || windowBounds == null)
                 {
                     _regionOverlay?.Hide();
                     return;
