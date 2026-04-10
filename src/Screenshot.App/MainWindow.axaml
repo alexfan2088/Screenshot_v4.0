@@ -8,7 +8,9 @@
         Title="Screenshot 4.0"
         Width="1400" Height="52"
         MinWidth="1024" MinHeight="44"
+        CanResize="False"
         WindowStartupLocation="CenterScreen"
+        Topmost="True"
         SystemDecorations="Full">
   <Design.DataContext>
     <vm:MainViewModel />
