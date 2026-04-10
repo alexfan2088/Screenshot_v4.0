@@ -7,18 +7,12 @@ ARCH="${1:-arm64}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/mac/bin"
 APP_DIR="$OUT_DIR/$APP_NAME.app"
-DMG_DIR="/Users/fwp-mac/Documents/dmg file"
 DMG_PATH="/Users/fwp-mac/Documents/可分发dmg/$APP_NAME-$VERSION-$ARCH.dmg"
 DMG_RW="/tmp/$APP_NAME-$VERSION-$ARCH.rw.dmg"
 DMG_OUT_TMP="/tmp/$APP_NAME-$VERSION-$ARCH.dmg"
 
 if [ ! -d "$APP_DIR" ]; then
   echo "App not found: $APP_DIR" >&2
-  exit 1
-fi
-
-if [ ! -d "$DMG_DIR" ]; then
-  echo "DMG staging folder not found: $DMG_DIR" >&2
   exit 1
 fi
 
@@ -36,11 +30,7 @@ fi
 
 cp -R "$APP_DIR" "$MOUNT_DIR/"
 ln -s /Applications "$MOUNT_DIR/Applications"
-
-if [ -f "$DMG_DIR/.background/background.png" ]; then
-  mkdir -p "$MOUNT_DIR/.background"
-  cp "$DMG_DIR/.background/background.png" "$MOUNT_DIR/.background/background.png"
-fi
+rm -rf "$MOUNT_DIR/.background" "$MOUNT_DIR/.DS_Store"
 
 osascript <<EOF
 tell application "Finder"
@@ -56,7 +46,7 @@ tell application "Finder"
     set icon size of viewOptions to 180
     set text size of viewOptions to 14
     try
-      set background picture of viewOptions to file ".background:background.png"
+      set background picture of viewOptions to missing value
     end try
     set position of item "$APP_NAME.app" to {490, 510}
     set position of item "Applications" to {490, 210}
