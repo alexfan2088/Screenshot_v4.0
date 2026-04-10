@@ -79,7 +79,11 @@ namespace Screenshot.App
                 _wasMinimized)
             {
                 _wasMinimized = false;
-                EnsureRestoredToTopCenter();
+                Dispatcher.UIThread.Post(() =>
+                {
+                    PositionTopCenter();
+                    UpdateRegionOverlay();
+                }, DispatcherPriority.Background);
             }
         }
 
@@ -112,6 +116,29 @@ namespace Screenshot.App
                 DataContext = vm
             };
             window.Show();
+        }
+
+        private void OnTopBarPointerPressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+
+            var allowDragFromAnywhere = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+            if (!allowDragFromAnywhere && sender != e.Source) return;
+
+            try
+            {
+                BeginMoveDrag(e);
+                e.Handled = true;
+            }
+            catch
+            {
+                // Ignore drag initiation failures.
+            }
+        }
+
+        private void OnCloseAppClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            Close();
         }
 
         private async void OnPickOutputDirectoryClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

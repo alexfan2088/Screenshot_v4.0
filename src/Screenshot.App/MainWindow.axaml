@@ -6,17 +6,20 @@
         mc:Ignorable="d"
         x:Class="Screenshot.App.MainWindow"
         Title="Screenshot 4.0"
-        Width="1400" Height="52"
-        MinWidth="1024" MinHeight="44"
+        Width="1400" Height="36"
+        MinWidth="1024" MinHeight="30"
         CanResize="False"
         WindowStartupLocation="CenterScreen"
         Topmost="True"
-        SystemDecorations="Full">
+        SystemDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="-1">
   <Design.DataContext>
     <vm:MainViewModel />
   </Design.DataContext>
 
-  <Border Background="#0B6F3E" Padding="6,4" BorderBrush="#0A5A33" BorderThickness="0,0,0,1">
+  <Border Background="#0B6F3E" Padding="6,2" BorderBrush="#0A5A33" BorderThickness="0,0,0,1"
+          PointerPressed="OnTopBarPointerPressed">
     <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
       <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
         <Menu Background="Transparent" BorderBrush="Transparent" FontSize="12">
@@ -31,6 +34,8 @@
           </Menu.Styles>
           <MenuItem Header="设置">
             <MenuItem Header="音视频参数" Click="OnOpenSettingsClick" />
+            <Separator />
+            <MenuItem Header="关闭" Click="OnCloseAppClick" />
             <Separator />
             <MenuItem Header="音视频模式">
               <MenuItem Header="{Binding OutputModeNoneLabel}" Command="{Binding SetOutputModeNoneCommand}" />
