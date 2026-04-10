@@ -21,6 +21,7 @@ namespace Screenshot.App
         private RegionOverlayWindow? _regionOverlay;
         private MainViewModel? _vm;
         private bool _isOpened;
+        private bool _isSyncingRegionFromOverlay;
 
         public MainWindow()
         {
@@ -389,6 +390,7 @@ namespace Screenshot.App
             if (e.PropertyName == nameof(MainViewModel.UseCustomRegion) ||
                 e.PropertyName == nameof(MainViewModel.SelectedCaptureMode) ||
                 e.PropertyName == nameof(MainViewModel.SelectedWindowId) ||
+                e.PropertyName == nameof(MainViewModel.IsEditingLocked) ||
                 e.PropertyName == nameof(MainViewModel.RegionLeft) ||
                 e.PropertyName == nameof(MainViewModel.RegionTop) ||
                 e.PropertyName == nameof(MainViewModel.RegionWidth) ||
@@ -428,16 +430,12 @@ namespace Screenshot.App
                 EnsureRegionOverlay();
                 if (_regionOverlay == null) return;
                 var windowScale = GetPrimaryScreenScale();
-                _regionOverlay.SetScreenBounds(bounds.Value, windowScale);
-                var windowOverlayTopLeft = _regionOverlay.PointToClient(new PixelPoint(windowBounds.X, windowBounds.Y));
-                var windowOverlayBottomRight = _regionOverlay.PointToClient(new PixelPoint(windowBounds.X + windowBounds.Width, windowBounds.Y + windowBounds.Height));
-                var windowOverlayRect = new PixelRect(
-                    (int)Math.Round(Math.Min(windowOverlayTopLeft.X, windowOverlayBottomRight.X)),
-                    (int)Math.Round(Math.Min(windowOverlayTopLeft.Y, windowOverlayBottomRight.Y)),
-                    Math.Max(1, (int)Math.Round(Math.Abs(windowOverlayBottomRight.X - windowOverlayTopLeft.X))),
-                    Math.Max(1, (int)Math.Round(Math.Abs(windowOverlayBottomRight.Y - windowOverlayTopLeft.Y)))
-                );
+                var windowWidthDip = Math.Max(1, (int)Math.Round(windowBounds.Width / windowScale));
+                var windowHeightDip = Math.Max(1, (int)Math.Round(windowBounds.Height / windowScale));
+                _regionOverlay.SetScreenBounds(new PixelRect(windowBounds.X, windowBounds.Y, windowBounds.Width, windowBounds.Height), windowScale);
+                var windowOverlayRect = new PixelRect(0, 0, windowWidthDip, windowHeightDip);
                 _regionOverlay.SetRegion(windowOverlayRect);
+                _regionOverlay.SetEditable(false);
                 _regionOverlay.Show();
                 return;
             }
@@ -449,29 +447,20 @@ namespace Screenshot.App
             var height = ParseInt(_vm.RegionHeight);
             if (!useCustom || width <= 0 || height <= 0)
             {
-                _vm.ApplyCustomRegion(0, 0, bounds.Value.Width, bounds.Value.Height, remember: true);
+                _regionOverlay?.Hide();
                 return;
             }
 
             var regionScale = GetPrimaryScreenScale();
-            var dipLeft = (int)Math.Round((left - bounds.Value.X) / regionScale);
-            var dipTop = (int)Math.Round((top - bounds.Value.Y) / regionScale);
             var dipWidth = (int)Math.Round(width / regionScale);
             var dipHeight = (int)Math.Round(height / regionScale);
-            var rect = new PixelRect(dipLeft, dipTop, Math.Max(1, dipWidth), Math.Max(1, dipHeight));
+            var rect = new PixelRect(0, 0, Math.Max(1, dipWidth), Math.Max(1, dipHeight));
 
             EnsureRegionOverlay();
             if (_regionOverlay == null) return;
-            _regionOverlay.SetScreenBounds(bounds.Value, regionScale);
-            var regionOverlayTopLeft = _regionOverlay.PointToClient(new PixelPoint(left, top));
-            var regionOverlayBottomRight = _regionOverlay.PointToClient(new PixelPoint(left + width, top + height));
-            var regionOverlayRect = new PixelRect(
-                (int)Math.Round(Math.Min(regionOverlayTopLeft.X, regionOverlayBottomRight.X)),
-                (int)Math.Round(Math.Min(regionOverlayTopLeft.Y, regionOverlayBottomRight.Y)),
-                Math.Max(1, (int)Math.Round(Math.Abs(regionOverlayBottomRight.X - regionOverlayTopLeft.X))),
-                Math.Max(1, (int)Math.Round(Math.Abs(regionOverlayBottomRight.Y - regionOverlayTopLeft.Y)))
-            );
-            _regionOverlay.SetRegion(regionOverlayRect);
+            _regionOverlay.SetScreenBounds(new PixelRect(left, top, width, height), regionScale);
+            _regionOverlay.SetRegion(rect);
+            _regionOverlay.SetEditable(_vm.IsEditingUnlocked && _vm.SelectedCaptureMode == CaptureMode.AnyRegion);
             _regionOverlay.Show();
         }
 
@@ -480,7 +469,37 @@ namespace Screenshot.App
             if (_regionOverlay != null) return;
             if (!_isOpened) return;
             _regionOverlay = new RegionOverlayWindow();
+            _regionOverlay.RegionChanged += OnOverlayRegionChanged;
             _regionOverlay.Show(this);
+        }
+
+        private void OnOverlayRegionChanged(PixelRect clientRect)
+        {
+            if (_vm == null) return;
+            if (_vm.IsEditingLocked) return;
+            if (_vm.SelectedCaptureMode != CaptureMode.AnyRegion) return;
+            if (_isSyncingRegionFromOverlay) return;
+
+            var topLeft = _regionOverlay?.PointToScreen(new Point(clientRect.X, clientRect.Y));
+            var bottomRight = _regionOverlay?.PointToScreen(new Point(clientRect.X + clientRect.Width, clientRect.Y + clientRect.Height));
+            if (!topLeft.HasValue || !bottomRight.HasValue) return;
+
+            var left = Math.Min(topLeft.Value.X, bottomRight.Value.X);
+            var top = Math.Min(topLeft.Value.Y, bottomRight.Value.Y);
+            var right = Math.Max(topLeft.Value.X, bottomRight.Value.X);
+            var bottom = Math.Max(topLeft.Value.Y, bottomRight.Value.Y);
+            var width = Math.Max(1, right - left);
+            var height = Math.Max(1, bottom - top);
+
+            _isSyncingRegionFromOverlay = true;
+            try
+            {
+                _vm.ApplyCustomRegion(left, top, width, height, remember: true);
+            }
+            finally
+            {
+                _isSyncingRegionFromOverlay = false;
+            }
         }
 
         private static int ParseInt(string value)

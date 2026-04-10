@@ -481,6 +481,7 @@ namespace Screenshot.App.ViewModels
                     _macHelperPath = _macHelperPath.Replace("@executable_path", baseDir, StringComparison.Ordinal);
                 }
                 _macHelperPath = Path.GetFullPath(_macHelperPath, AppContext.BaseDirectory);
+                _macHelperPath = ResolveMacHelperPath(_macHelperPath);
             }
 
             _sessionName = $"Screenshot_{DateTime.Now:yyyyMMdd}";
@@ -1326,6 +1327,34 @@ namespace Screenshot.App.ViewModels
 #endif
 
             throw new PlatformNotSupportedException("Windows backend not wired yet.");
+        }
+
+        private static string ResolveMacHelperPath(string preferredPath)
+        {
+            if (File.Exists(preferredPath))
+            {
+                return preferredPath;
+            }
+
+            var baseDir = AppContext.BaseDirectory;
+            var candidates = new[]
+            {
+                Path.Combine(baseDir, "RecorderHelper"),
+                Path.Combine(baseDir, "../../../../Screenshot.Mac/RecorderHelper/.build/release/RecorderHelper"),
+                Path.Combine(baseDir, "../../../../Screenshot.Mac/RecorderHelper/.build/arm64-apple-macosx/release/RecorderHelper"),
+                Path.Combine(baseDir, "../../../../../mac/bin/Screenshot.app/Contents/Resources/RecorderHelper")
+            };
+
+            foreach (var candidate in candidates)
+            {
+                var fullPath = Path.GetFullPath(candidate, baseDir);
+                if (File.Exists(fullPath))
+                {
+                    return fullPath;
+                }
+            }
+
+            return preferredPath;
         }
 
         private void CopySessionPath()
