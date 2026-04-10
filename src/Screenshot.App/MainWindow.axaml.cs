@@ -438,6 +438,12 @@ namespace Screenshot.App
 
         private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
+            if (!Dispatcher.UIThread.CheckAccess())
+            {
+                Dispatcher.UIThread.Post(() => OnVmPropertyChanged(sender, e));
+                return;
+            }
+
             if (e.PropertyName == nameof(MainViewModel.UseCustomRegion) ||
                 e.PropertyName == nameof(MainViewModel.SelectedCaptureMode) ||
                 e.PropertyName == nameof(MainViewModel.SelectedWindowId) ||
