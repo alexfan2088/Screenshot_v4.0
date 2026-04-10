@@ -24,6 +24,9 @@ namespace Screenshot.App
         private bool _isSyncingRegionFromOverlay;
         private bool _wasMinimized;
         private bool _isForcingFloatingState;
+        private const int RegionMoveStep = 5;
+        private const int RegionResizeStep = 10;
+        private const int MinRegionSize = 20;
 
         public MainWindow()
         {
@@ -39,6 +42,7 @@ namespace Screenshot.App
             PropertyChanged += OnWindowPropertyChanged;
             HookNumericInputBehavior();
             DataContextChanged += OnDataContextChanged;
+            KeyDown += OnMainWindowKeyDown;
             Activated += (_, _) =>
             {
                 UpdateCurrentDisplayId();
@@ -457,6 +461,80 @@ namespace Screenshot.App
             }
         }
 
+        private void OnMainWindowKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (_vm == null) return;
+            if (_vm.SelectedCaptureMode != CaptureMode.AnyRegion) return;
+            if (!e.KeyModifiers.HasFlag(KeyModifiers.Meta) || !e.KeyModifiers.HasFlag(KeyModifiers.Alt)) return;
+
+            var bounds = GetVirtualScreenBounds();
+            if (!bounds.HasValue) return;
+            var screen = bounds.Value;
+
+            var left = ParseInt(_vm.RegionLeft);
+            var top = ParseInt(_vm.RegionTop);
+            var width = ParseInt(_vm.RegionWidth);
+            var height = ParseInt(_vm.RegionHeight);
+
+            if (!_vm.UseCustomRegion || width <= 0 || height <= 0)
+            {
+                left = screen.X;
+                top = screen.Y;
+                width = Math.Max(MinRegionSize, screen.Width);
+                height = Math.Max(MinRegionSize, screen.Height);
+            }
+
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                switch (e.Key)
+                {
+                    case Key.Left:
+                        width = Math.Max(MinRegionSize, width - RegionResizeStep);
+                        break;
+                    case Key.Right:
+                        width += RegionResizeStep;
+                        break;
+                    case Key.Up:
+                        height = Math.Max(MinRegionSize, height - RegionResizeStep);
+                        break;
+                    case Key.Down:
+                        height += RegionResizeStep;
+                        break;
+                    default:
+                        return;
+                }
+            }
+            else
+            {
+                switch (e.Key)
+                {
+                    case Key.Left:
+                        left -= RegionMoveStep;
+                        break;
+                    case Key.Right:
+                        left += RegionMoveStep;
+                        break;
+                    case Key.Up:
+                        top -= RegionMoveStep;
+                        break;
+                    case Key.Down:
+                        top += RegionMoveStep;
+                        break;
+                    default:
+                        return;
+                }
+            }
+
+            width = Math.Min(width, screen.Width);
+            height = Math.Min(height, screen.Height);
+            left = Math.Clamp(left, screen.X, screen.Right - width);
+            top = Math.Clamp(top, screen.Y, screen.Bottom - height);
+
+            _vm.ApplyCustomRegion(left, top, width, height, remember: true);
+            _vm.StatusMessage = $"区域: {left},{top} {width}x{height}";
+            e.Handled = true;
+        }
+
         private void UpdateRegionOverlay()
         {
             if (!_isOpened) return;
@@ -517,7 +595,7 @@ namespace Screenshot.App
             if (_regionOverlay == null) return;
             _regionOverlay.SetScreenBounds(new PixelRect(left, top, width, height), regionScale);
             _regionOverlay.SetRegion(rect);
-            _regionOverlay.SetEditable(_vm.IsEditingUnlocked && _vm.SelectedCaptureMode == CaptureMode.AnyRegion);
+            _regionOverlay.SetEditable(false);
             _regionOverlay.Show();
         }
 
