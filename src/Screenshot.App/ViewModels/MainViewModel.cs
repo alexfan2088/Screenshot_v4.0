@@ -613,48 +613,82 @@ namespace Screenshot.App.ViewModels
         {
             if (_stopInProgress) return;
             _stopInProgress = true;
-            _autoStopCts?.Cancel();
-            _isRecording = false;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
-            StatusMessage = "停止中...";
-            RaiseCommandStates();
-            var currentSessionDir = SessionDirectoryStatus;
+            try
+            {
+                _autoStopCts?.Cancel();
+                _isRecording = false;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
+                StatusMessage = "停止中...";
+                RaiseCommandStates();
+                var currentSessionDir = SessionDirectoryStatus;
 
-            RecordingSessionResult? result = null;
-            if (_backend != null)
-            {
-                result = await _backend.StopAsync(System.Threading.CancellationToken.None);
-                await DisposeBackendAsync();
-                var duration = DateTime.UtcNow - _recordingStart;
-                StatusMessage = $"已停止（{duration:hh\\:mm\\:ss}）";
-                LastVideoPath = result.VideoPath;
-                LastAudioPath = result.AudioPath;
+                RecordingSessionResult? result = null;
+                if (_backend != null)
+                {
+                    try
+                    {
+                        result = await _backend.StopAsync(System.Threading.CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.WriteError("Backend stop failed", ex);
+                    }
+                    finally
+                    {
+                        await DisposeBackendAsync();
+                    }
+
+                    var duration = DateTime.UtcNow - _recordingStart;
+                    StatusMessage = $"已停止（{duration:hh\\:mm\\:ss}）";
+                    LastVideoPath = result?.VideoPath;
+                    LastAudioPath = result?.AudioPath;
+                }
+                else
+                {
+                    StatusMessage = "已停止（无后端）";
+                }
+
+                _freezeSessionPreview = false;
+                if (_docPipeline != null)
+                {
+                    _docPipeline.CaptureCompleted -= OnCaptureCompleted;
+                    LastPptPath = _docPipeline.PptPath;
+                    try
+                    {
+                        await _docPipeline.StopAsync(System.Threading.CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.WriteError("Document pipeline stop failed", ex);
+                    }
+                    finally
+                    {
+                        await DisposeDocPipelineAsync();
+                    }
+                }
+
+                StopStatusTimer();
+                _nextCheckSeconds = 0;
+                _remainingTimeText = "--";
+                UpdateStatusInfo();
+                LastLogPath = Logger.LogFilePath;
+                LastSessionDirectory = currentSessionDir;
+                var ppt = LastPptPath ?? "-";
+                var mp4 = LastVideoPath ?? "-";
+                var wav = LastAudioPath ?? "-";
+                LastOutputSummary = $"mp4: {mp4} | wav: {wav} | ppt: {ppt}";
+                SessionDirectoryStatus = "";
+                RaiseCommandStates();
             }
-            else
+            catch (Exception ex)
             {
-                StatusMessage = "已停止（无后端）";
+                Logger.WriteError("Stop recording failed", ex);
+                StatusMessage = $"停止失败: {ex.Message}";
             }
-            _freezeSessionPreview = false;
-            if (_docPipeline != null)
+            finally
             {
-                _docPipeline.CaptureCompleted -= OnCaptureCompleted;
-                LastPptPath = _docPipeline.PptPath;
-                await _docPipeline.StopAsync(System.Threading.CancellationToken.None);
-                await DisposeDocPipelineAsync();
+                _stopInProgress = false;
             }
-            StopStatusTimer();
-            _nextCheckSeconds = 0;
-            _remainingTimeText = "--";
-            UpdateStatusInfo();
-            LastLogPath = Logger.LogFilePath;
-            LastSessionDirectory = currentSessionDir;
-            var ppt = LastPptPath ?? "-";
-            var mp4 = LastVideoPath ?? "-";
-            var wav = LastAudioPath ?? "-";
-            LastOutputSummary = $"mp4: {mp4} | wav: {wav} | ppt: {ppt}";
-            SessionDirectoryStatus = "";
-            RaiseCommandStates();
-            _stopInProgress = false;
         }
 
         private void RaiseCommandStates()

@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using Screenshot.Core;
 
 namespace Screenshot.App.ViewModels
 {
@@ -32,6 +33,10 @@ namespace Screenshot.App.ViewModels
                 _isExecuting = true;
                 RaiseCanExecuteChanged();
                 await _execute();
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteError("Async command execution failed", ex);
             }
             finally
             {

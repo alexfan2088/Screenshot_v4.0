@@ -10,12 +10,33 @@
         ShowInTaskbar="False"
         Topmost="True"
         Focusable="False"
-        ShowActivated="False"
-        IsHitTestVisible="False">
+        ShowActivated="False">
   <Canvas Name="OverlayCanvas">
     <Border Name="HighlightBorder"
             BorderBrush="#FF3B30"
             BorderThickness="2"
-            Background="#10FF3B30" />
+            Background="#10FF3B30"
+            IsHitTestVisible="False" />
+    <Border Name="TopGrip"
+            Height="8"
+            Background="Transparent"
+            Cursor="TopSide" />
+    <Border Name="BottomGrip"
+            Height="8"
+            Background="Transparent"
+            Cursor="BottomSide" />
+    <Border Name="LeftGrip"
+            Width="8"
+            Background="Transparent"
+            Cursor="LeftSide" />
+    <Border Name="RightGrip"
+            Width="8"
+            Background="Transparent"
+            Cursor="RightSide" />
+    <Border Name="BottomRightGrip"
+            Width="14"
+            Height="14"
+            Background="Transparent"
+            Cursor="BottomRightCorner" />
   </Canvas>
 </Window>
