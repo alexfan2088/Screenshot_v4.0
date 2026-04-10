@@ -22,6 +22,8 @@ namespace Screenshot.App
         private MainViewModel? _vm;
         private bool _isOpened;
         private bool _isSyncingRegionFromOverlay;
+        private bool _wasMinimized;
+        private bool _isForcingFloatingState;
 
         public MainWindow()
         {
@@ -34,6 +36,7 @@ namespace Screenshot.App
                 UpdateCaptureSpaceMode();
                 UpdateRegionOverlay();
             };
+            PropertyChanged += OnWindowPropertyChanged;
             HookNumericInputBehavior();
             DataContextChanged += OnDataContextChanged;
             Activated += (_, _) =>
@@ -47,6 +50,54 @@ namespace Screenshot.App
                 UpdateCaptureSpaceMode();
             };
             Closed += (_, _) => _regionOverlay?.Close();
+        }
+
+        private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+        {
+            if (e.Property != WindowStateProperty) return;
+            if (_isForcingFloatingState) return;
+
+            if (e.NewValue is WindowState newState && newState == WindowState.Minimized)
+            {
+                _wasMinimized = true;
+                return;
+            }
+
+            if (e.NewValue is WindowState forceState &&
+                (forceState == WindowState.Maximized || forceState == WindowState.FullScreen))
+            {
+                EnsureRestoredToTopCenter();
+                return;
+            }
+
+            if (e.NewValue is WindowState restoredState &&
+                restoredState == WindowState.Normal &&
+                _wasMinimized)
+            {
+                _wasMinimized = false;
+                EnsureRestoredToTopCenter();
+            }
+        }
+
+        private void EnsureRestoredToTopCenter()
+        {
+            _isForcingFloatingState = true;
+            try
+            {
+                if (WindowState != WindowState.Normal)
+                {
+                    WindowState = WindowState.Normal;
+                }
+            }
+            finally
+            {
+                _isForcingFloatingState = false;
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                PositionTopCenter();
+            }, DispatcherPriority.Background);
         }
 
         private void OnOpenSettingsClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
