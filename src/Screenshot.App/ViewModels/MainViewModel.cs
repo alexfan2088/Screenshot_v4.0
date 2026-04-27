@@ -75,6 +75,9 @@ namespace Screenshot.App.ViewModels
         private DateTime? _autoStopAtUtc;
         private bool _stopInProgress;
         private CancellationTokenSource? _liveSettingsDebounceCts;
+        private bool _pendingLiveDurationChange;
+        private bool _pendingLiveIntervalChange;
+        private bool _pendingLiveChangeRateChange;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -947,17 +950,33 @@ if (_stopInProgress)
 
             try
             {
-                // Duration: re-schedule from now (matches current countdown reset behavior).
-                StartAutoStopTimer();
+                // Snapshot + clear pending flags first (so new edits during apply schedule another run).
+                var applyDuration = _pendingLiveDurationChange;
+                var applyInterval = _pendingLiveIntervalChange;
+                var applyChangeRate = _pendingLiveChangeRateChange;
+                _pendingLiveDurationChange = false;
+                _pendingLiveIntervalChange = false;
+                _pendingLiveChangeRateChange = false;
 
-                if (_docPipeline != null)
+                // Only changing duration should reset the countdown.
+                if (applyDuration)
                 {
-                    await _docPipeline.UpdateCaptureParamsAsync(ParseScreenChangeRate(), ParseIntervalSeconds(), System.Threading.CancellationToken.None);
+                    StartAutoStopTimer();
+                }
+
+                // Interval/change-rate affect capture pipeline only.
+                if (_docPipeline != null && (applyInterval || applyChangeRate))
+                {
+                    await _docPipeline.UpdateCaptureParamsAsync(
+                        ParseScreenChangeRate(),
+                        ParseIntervalSeconds(),
+                        System.Threading.CancellationToken.None);
                 }
 
                 // Refresh UI immediately.
                 UpdateRemainingTime();
                 UpdateStatusInfo();
+
             }
             catch (Exception ex)
             {
@@ -1055,6 +1074,9 @@ if (_stopInProgress)
             if (_isRecording && !_stopInProgress &&
                 (name == nameof(ScreenChangeRate) || name == nameof(ScreenshotInterval) || name == nameof(RecordingDurationMinutes)))
             {
+                if (name == nameof(RecordingDurationMinutes)) _pendingLiveDurationChange = true;
+                if (name == nameof(ScreenshotInterval)) _pendingLiveIntervalChange = true;
+                if (name == nameof(ScreenChangeRate)) _pendingLiveChangeRateChange = true;
                 ScheduleLiveSettingsApply();
             }
 
