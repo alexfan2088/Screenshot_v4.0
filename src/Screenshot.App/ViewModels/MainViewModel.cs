@@ -69,7 +69,6 @@ namespace Screenshot.App.ViewModels
         private DateTime _nextCheckDueAtUtc;
         private string _remainingTimeText = "--";
         private DispatcherTimer? _statusTimer;
-        private DispatcherTimer? _inputApplyTimer;
         private int _lastDurationMinutesApplied;
         private readonly string _settingsPath;
         private string _settingsPathDisplay;
@@ -826,44 +825,6 @@ namespace Screenshot.App.ViewModels
             }
         }
 
-        private void ScheduleInputApply()
-        {
-            if (_inputApplyTimer == null)
-            {
-                _inputApplyTimer = new DispatcherTimer
-                {
-                    Interval = TimeSpan.FromSeconds(2)
-                };
-                _inputApplyTimer.Tick += (_, _) =>
-                {
-                    _inputApplyTimer?.Stop();
-                    ApplyInputChanges();
-                };
-            }
-
-            _inputApplyTimer.Stop();
-            _inputApplyTimer.Start();
-        }
-
-        private void ApplyInputChanges()
-        {
-            _currentChangeRate = ParseScreenChangeRate();
-            _nextCheckSeconds = ParseIntervalSeconds();
-            _nextCheckDueAtUtc = DateTime.UtcNow.AddSeconds(_nextCheckSeconds);
-            var durationMinutes = ParseInt(RecordingDurationMinutes);
-            if (_isRecording && durationMinutes != _lastDurationMinutesApplied)
-            {
-                _recordingStart = DateTime.UtcNow;
-            }
-            _lastDurationMinutesApplied = durationMinutes;
-            if (_isRecording && _docPipeline != null)
-            {
-                _docPipeline.UpdateCaptureSettings(_nextCheckSeconds, _currentChangeRate);
-            }
-            UpdateRemainingTime();
-            UpdateStatusInfo();
-        }
-
         private void OnCaptureCompleted(DocumentCapturePipeline.CaptureStatus status)
         {
             Dispatcher.UIThread.Post(() =>
@@ -879,15 +840,20 @@ namespace Screenshot.App.ViewModels
 
         private void UpdateRemainingTime()
         {
-            var totalMinutes = ParseInt(RecordingDurationMinutes);
-            if (totalMinutes <= 0)
+            if (!_isRecording)
             {
                 _remainingTimeText = "--";
                 return;
             }
 
-            var elapsed = DateTime.UtcNow - _recordingStart;
-            var totalSeconds = Math.Max(0, (int)TimeSpan.FromMinutes(totalMinutes).TotalSeconds - (int)elapsed.TotalSeconds);
+            if (!_autoStopAtUtc.HasValue)
+            {
+                _remainingTimeText = "--";
+                return;
+            }
+
+            var remaining = _autoStopAtUtc.Value - DateTime.UtcNow;
+            var totalSeconds = Math.Max(0, (int)Math.Ceiling(remaining.TotalSeconds));
             var minutes = totalSeconds / 60;
             var seconds = totalSeconds % 60;
             _remainingTimeText = $"{Clamp(minutes, 0, 999)}分{Clamp(seconds, 0, 59)}秒";
@@ -971,6 +937,10 @@ namespace Screenshot.App.ViewModels
                 {
                     await _docPipeline.UpdateCaptureParamsAsync(ParseScreenChangeRate(), ParseIntervalSeconds(), System.Threading.CancellationToken.None);
                 }
+
+                // Refresh UI immediately.
+                UpdateRemainingTime();
+                UpdateStatusInfo();
             }
             catch (Exception ex)
             {
@@ -1044,18 +1014,14 @@ namespace Screenshot.App.ViewModels
             {
                 if (OpenSettingsDirectoryCommand is DelegateCommand openSettings) openSettings.RaiseCanExecuteChanged();
             }
-            if (name == nameof(ScreenChangeRate))
+
+            // Live apply (debounced) while recording: change-rate/interval/duration take effect after 3s idle.
+            if (_isRecording && !_stopInProgress &&
+                (name == nameof(ScreenChangeRate) || name == nameof(ScreenshotInterval) || name == nameof(RecordingDurationMinutes)))
             {
-                ScheduleInputApply();
+                ScheduleLiveSettingsApply();
             }
-            if (name == nameof(ScreenshotInterval))
-            {
-                ScheduleInputApply();
-            }
-            if (name == nameof(RecordingDurationMinutes))
-            {
-                ScheduleInputApply();
-            }
+
             if (name == nameof(SelectedOutputMode))
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsOutputModeNone)));
