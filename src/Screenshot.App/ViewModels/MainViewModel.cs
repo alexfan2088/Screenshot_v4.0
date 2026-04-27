@@ -735,6 +735,8 @@ namespace Screenshot.App.ViewModels
             finally
             {
                 _stopInProgress = false;
+                NotifyStatusBarChanged();
+                RaiseCommandStates();
             }
         }
 
