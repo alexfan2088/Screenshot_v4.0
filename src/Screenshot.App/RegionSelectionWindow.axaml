@@ -26,7 +26,7 @@
             Margin="0,18,0,0"
             IsHitTestVisible="False">
       <TextBlock Foreground="#FFFFFF" FontSize="14"
-                 Text="拖拽选择区域；Enter 确认，Esc 取消。⌘⌥←→↑↓ 移动区域；⌘⌥⇧←→↑↓ 调整区域大小。" />
+                 Text="拖拽选择区域；松开鼠标确认，Esc 取消。⌘⌥←→↑↓ 移动区域；⌘⌥⇧←→↑↓ 调整区域大小。" />
     </Border>
   </Grid>
 </Window>

@@ -32,7 +32,7 @@
                   <StackPanel Spacing="4">
                     <TextBlock Text="区域选择（点击“选择”进入）：" FontWeight="Bold" />
                     <TextBlock Text="• 拖拽框选区域" />
-                    <TextBlock Text="• Enter 确认，Esc 取消" />
+                    <TextBlock Text="• 松开鼠标确认，Esc 取消" />
                     <TextBlock Text="• ⌘⌥ ←/→/↑/↓：移动区域" />
                     <TextBlock Text="• ⌘⌥⇧ ←/→/↑/↓：调整区域大小" />
                   </StackPanel>
