@@ -130,19 +130,36 @@ namespace Screenshot.App.ViewModels
         {
             get
             {
-                if (_stopInProgress)
+if (_stopInProgress)
                 {
                     return "正在生成文件…";
                 }
 
                 if (!string.IsNullOrWhiteSpace(LastSessionDirectory))
                 {
-                    var summary = string.IsNullOrWhiteSpace(LastOutputSummaryShort) ? LastOutputSummary : LastOutputSummaryShort;
-                    return $"已生成：{summary} | 目录：{LastSessionDirectory}";
+                    var types = GetGeneratedTypesText();
+                    return $"已生成 {types} 文件在目录 {LastSessionDirectory}";
                 }
 
                 return StatusMessage;
             }
+        }
+
+        private string GetGeneratedTypesText()
+        {
+            var list = new System.Collections.Generic.List<string>();
+
+            if (!string.IsNullOrWhiteSpace(LastVideoPath)) list.Add("mp4");
+            if (!string.IsNullOrWhiteSpace(LastAudioPath)) list.Add("wav");
+            if (!string.IsNullOrWhiteSpace(LastPptPath)) list.Add("pptx");
+
+            // Only claim jpg when user chooses to keep them.
+            if (KeepJpgFiles && _captureCount > 0)
+            {
+                list.Add("jpg");
+            }
+
+            return list.Count == 0 ? "文件" : string.Join(",", list);
         }
 
 
