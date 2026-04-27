@@ -71,7 +71,7 @@ namespace Screenshot.App.ViewModels
         private int _lastDurationMinutesApplied;
         private readonly string _settingsPath;
         private string _settingsPathDisplay;
-        private CancellationTokenSource? _autoStopCts;
+        private DateTime? _autoStopAtUtc;
         private bool _stopInProgress;
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -577,6 +577,7 @@ namespace Screenshot.App.ViewModels
             try
             {
                 _recordingStart = DateTime.UtcNow;
+                StartAutoStopTimer();
                 _docPipeline = new DocumentCapturePipeline(config, sessionDir, _sessionBaseName);
                 _docPipeline.CaptureCompleted += OnCaptureCompleted;
                 InitializeStatusInfo();
@@ -601,7 +602,7 @@ namespace Screenshot.App.ViewModels
                     _docPipeline.CaptureCompleted -= OnCaptureCompleted;
                 }
                 await DisposeDocPipelineAsync();
-                _autoStopCts?.Cancel();
+                _autoStopAtUtc = null;
             }
             finally
             {
@@ -615,7 +616,7 @@ namespace Screenshot.App.ViewModels
             _stopInProgress = true;
             try
             {
-                _autoStopCts?.Cancel();
+                _autoStopAtUtc = null;
                 _isRecording = false;
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
                 StatusMessage = "停止中...";
@@ -764,6 +765,15 @@ namespace Screenshot.App.ViewModels
             _nextCheckSeconds = Math.Max(0, remainingSeconds);
             UpdateRemainingTime();
             UpdateStatusInfo();
+
+
+            // Auto-stop (UI timer tick): stop once when due.
+            if (!_stopInProgress && _autoStopAtUtc.HasValue && DateTime.UtcNow >= _autoStopAtUtc.Value)
+            {
+                Logger.WriteInfo($"AutoStop: due at {_autoStopAtUtc:O}, stopping...");
+                _autoStopAtUtc = null;
+                _ = StopRecordingAsync();
+            }
         }
 
         private void ScheduleInputApply()
@@ -870,30 +880,19 @@ namespace Screenshot.App.ViewModels
             }
             return 0;
         }
-
         private void StartAutoStopTimer()
         {
-            _autoStopCts?.Cancel();
-            _autoStopCts = new CancellationTokenSource();
             var minutes = ParseInt(RecordingDurationMinutes);
-            if (minutes <= 0) return;
-
-            var token = _autoStopCts.Token;
-            _ = System.Threading.Tasks.Task.Run(async () =>
+            if (minutes <= 0)
             {
-                try
-                {
-                    await System.Threading.Tasks.Task.Delay(TimeSpan.FromMinutes(minutes), token);
-                    if (!token.IsCancellationRequested && _isRecording)
-                    {
-                        await StopRecordingAsync();
-                    }
-                }
-                catch
-                {
-                    // ignore
-                }
-            }, token);
+                _autoStopAtUtc = null;
+                Logger.WriteInfo("AutoStop: disabled");
+                return;
+            }
+
+            // Schedule from now (matches countdown reset behavior when duration changes).
+            _autoStopAtUtc = DateTime.UtcNow.AddMinutes(minutes);
+            Logger.WriteInfo($"AutoStop: scheduled +{minutes} min at {_autoStopAtUtc:O}");
         }
 
         private static string SanitizeSessionName(string? name)

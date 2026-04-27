@@ -117,10 +117,16 @@ namespace Screenshot.Platform.Mac
                 throw new InvalidOperationException("Recording not started");
             }
 
+            var proc = _process;
+
             try
             {
-                await _process.StandardInput.WriteLineAsync("stop");
-                await _process.StandardInput.FlushAsync();
+                if (!proc.HasExited)
+                {
+                    await proc.StandardInput.WriteLineAsync("stop");
+                    await proc.StandardInput.FlushAsync();
+                    try { proc.StandardInput.Close(); } catch { }
+                }
             }
             catch
             {
@@ -132,14 +138,33 @@ namespace Screenshot.Platform.Mac
 
             try
             {
-                await _process.WaitForExitAsync(timeoutCts.Token);
+                if (!proc.HasExited)
+                {
+                    await proc.WaitForExitAsync(timeoutCts.Token);
+                }
             }
             catch
             {
-                try { _process.Kill(); } catch { }
+                try { proc.Kill(entireProcessTree: true); } catch { try { proc.Kill(); } catch { } }
+                try
+                {
+                    using var killWaitCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await proc.WaitForExitAsync(killWaitCts.Token);
+                }
+                catch
+                {
+                    // If it still won't exit, continue; caller will dispose/kill again.
+                }
             }
 
-            Logger.WriteInfo($"RecorderHelper exited with code {_process.ExitCode}");
+            if (proc.HasExited)
+            {
+                Logger.WriteInfo($"RecorderHelper exited with code {proc.ExitCode}");
+            }
+            else
+            {
+                Logger.WriteWarning("RecorderHelper did not exit after stop/kill attempts");
+            }
 
             var duration = DateTime.UtcNow - _startTime;
             _lastResult = new RecordingSessionResult(
@@ -155,7 +180,7 @@ namespace Screenshot.Platform.Mac
         {
             if (_process != null)
             {
-                try { if (!_process.HasExited) _process.Kill(); } catch { }
+                try { if (!_process.HasExited) { try { _process.Kill(entireProcessTree: true); } catch { _process.Kill(); } _process.WaitForExit(2000); } } catch { }
                 _process.Dispose();
                 _process = null;
             }
