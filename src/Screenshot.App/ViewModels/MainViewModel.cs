@@ -608,10 +608,10 @@ namespace Screenshot.App.ViewModels
                 CaptureCurrentSpaceOnly = CaptureCurrentSpaceOnly
             };
 
-            var sanitizedName = SanitizeSessionName(SessionName);
-            _sessionBaseName = $"{DateTime.Now:yyyyMMdd_HHmmss}_{sanitizedName}";
-            var sessionDirName = _sessionBaseName;
-            var sessionDir = Path.Combine(OutputDirectory, sessionDirName);
+            var baseId = GenerateSessionIdTimestamp(DateTime.Now);
+            var sessionId = MakeUniqueSessionId(OutputDirectory, baseId);
+            _sessionBaseName = sessionId;
+            var sessionDir = Path.Combine(OutputDirectory, sessionId);
             SessionDirectoryStatus = sessionDir;
             var options = new RecordingSessionOptions(
                 sessionDir,
@@ -963,6 +963,26 @@ namespace Screenshot.App.ViewModels
             Logger.WriteInfo($"AutoStop: scheduled +{minutes} min at {_autoStopAtUtc:O}");
         }
 
+        private static string GenerateSessionIdTimestamp(DateTime localNow)
+        {
+            // yymmddhhmmssfff (local time)
+            return localNow.ToString("yyMMddHHmmssfff");
+        }
+
+        private static string MakeUniqueSessionId(string outputDirectory, string baseId)
+        {
+            var id = baseId;
+            var dir = Path.Combine(outputDirectory, id);
+            var i = 1;
+            while (Directory.Exists(dir))
+            {
+                id = $"{baseId}_{i:00}";
+                dir = Path.Combine(outputDirectory, id);
+                i++;
+            }
+            return id;
+        }
+
         private static string SanitizeSessionName(string? name)
         {
             var value = string.IsNullOrWhiteSpace(name) ? "Session" : name.Trim();
@@ -976,8 +996,7 @@ namespace Screenshot.App.ViewModels
         private void RefreshSessionDirectoryPreview()
         {
             if (_freezeSessionPreview) return;
-            var sanitizedName = SanitizeSessionName(SessionName);
-            var previewName = $"{DateTime.Now:yyyyMMdd_HHmmss}_{sanitizedName}";
+            var previewName = GenerateSessionIdTimestamp(DateTime.Now);
             SessionDirectoryPreview = Path.Combine(OutputDirectory, previewName);
         }
 
@@ -987,7 +1006,7 @@ namespace Screenshot.App.ViewModels
             field = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-            if (name == nameof(SessionName) || name == nameof(OutputDirectory))
+            if (name == nameof(OutputDirectory))
             {
                 RefreshSessionDirectoryPreview();
             }
