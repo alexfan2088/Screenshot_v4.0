@@ -88,8 +88,8 @@
             </MenuItem>
             <Separator />
             <MenuItem Header="{Binding QuickScreenshotLabel}" Command="{Binding ToggleQuickScreenshotCommand}" />
-            <MenuItem Header="{Binding KeepJpgLabel}" Command="{Binding ToggleKeepJpgCommand}" />
-            <MenuItem Header="{Binding GeneratePptLabel}" Command="{Binding ToggleGeneratePptCommand}" />
+            <MenuItem Header="{Binding KeepJpgLabel}" Command="{Binding ToggleKeepJpgCommand}" IsEnabled="{Binding IsEditingUnlocked}" />
+            <MenuItem Header="{Binding GeneratePptLabel}" Command="{Binding ToggleGeneratePptCommand}" IsEnabled="{Binding IsEditingUnlocked}" />
             <Separator />
             <MenuItem Header="日志设置">
               <MenuItem Header="{Binding LogEnabledLabel}" Command="{Binding SetLogEnabledCommand}" />

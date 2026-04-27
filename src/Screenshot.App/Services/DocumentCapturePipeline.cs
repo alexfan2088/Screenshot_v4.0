@@ -51,7 +51,8 @@ namespace Screenshot.App.Services
             Directory.CreateDirectory(_outputDir);
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-            _nextIntervalAtUtc = DateTime.UtcNow.AddSeconds(Math.Max(1, _config.ScreenshotInterval));
+            // Capture the first frame immediately so users reliably get jpg/ppt output when enabled.
+            _nextIntervalAtUtc = DateTime.UtcNow;
 
             _loopTask = Task.Run(async () =>
             {
