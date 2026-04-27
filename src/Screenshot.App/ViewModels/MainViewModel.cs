@@ -22,6 +22,7 @@ namespace Screenshot.App.ViewModels
         private string _outputDirectory;
         private string _statusMessage = "待机";
         private string _lastOutputSummary = "暂无录制";
+        private string _lastOutputSummaryShort = "";
         private string _macHelperPath;
         private string _logDirectory;
         private bool _isRecording;
@@ -117,6 +118,32 @@ namespace Screenshot.App.ViewModels
             get => _lastOutputSummary;
             set => SetField(ref _lastOutputSummary, value);
         }
+
+        public string LastOutputSummaryShort
+        {
+            get => _lastOutputSummaryShort;
+            private set => SetField(ref _lastOutputSummaryShort, value);
+        }
+
+        public string StatusBarText
+        {
+            get
+            {
+                if (_stopInProgress)
+                {
+                    return "正在生成文件…";
+                }
+
+                if (!string.IsNullOrWhiteSpace(LastSessionDirectory))
+                {
+                    var summary = string.IsNullOrWhiteSpace(LastOutputSummaryShort) ? LastOutputSummary : LastOutputSummaryShort;
+                    return $"已生成：{summary} | 目录：{LastSessionDirectory}";
+                }
+
+                return StatusMessage;
+            }
+        }
+
 
         public string MacHelperPath
         {
@@ -518,6 +545,24 @@ namespace Screenshot.App.ViewModels
             SetLogAppendCommand = new DelegateCommand(() => LogAppendMode = true);
         }
 
+        private void SetRecordingState(bool isRecording)
+        {
+            if (_isRecording == isRecording) return;
+            _isRecording = isRecording;
+
+            // Notify computed properties that depend on recording state.
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingUnlocked)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRegionSelectionEnabled)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRecording)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusBarText)));
+        }
+
+        private void NotifyStatusBarChanged()
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StatusBarText)));
+        }
+
         private async System.Threading.Tasks.Task StartRecordingAsync()
         {
             if (SelectedCaptureMode == CaptureMode.Window && SelectedWindowId <= 0)
@@ -530,8 +575,7 @@ namespace Screenshot.App.ViewModels
             Logger.SetLogDirectory(LogDirectory);
             Logger.Enabled = LogEnabled;
             Logger.SetLogFileMode(LogAppendMode ? 1 : 0);
-            _isRecording = true;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
+            SetRecordingState(true);
             StatusMessage = "录制中";
             _freezeSessionPreview = true;
             RaiseCommandStates();
@@ -590,8 +634,7 @@ namespace Screenshot.App.ViewModels
             }
             catch (Exception ex)
             {
-                _isRecording = false;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
+                SetRecordingState(false);
                 _freezeSessionPreview = false;
                 StatusMessage = $"启动失败: {ex.Message}";
                 Logger.WriteError("Start recording failed", ex);
@@ -617,9 +660,9 @@ namespace Screenshot.App.ViewModels
             try
             {
                 _autoStopAtUtc = null;
-                _isRecording = false;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditingLocked)));
-                StatusMessage = "停止中...";
+                SetRecordingState(false);
+                StatusMessage = "正在生成文件…";
+                NotifyStatusBarChanged();
                 RaiseCommandStates();
                 var currentSessionDir = SessionDirectoryStatus;
 
@@ -678,7 +721,10 @@ namespace Screenshot.App.ViewModels
                 var mp4 = LastVideoPath ?? "-";
                 var wav = LastAudioPath ?? "-";
                 LastOutputSummary = $"mp4: {mp4} | wav: {wav} | ppt: {ppt}";
+                LastOutputSummaryShort = $"mp4: {System.IO.Path.GetFileName(mp4)} | wav: {System.IO.Path.GetFileName(wav)} | ppt: {System.IO.Path.GetFileName(ppt)}";
+                NotifyStatusBarChanged();
                 SessionDirectoryStatus = "";
+                NotifyStatusBarChanged();
                 RaiseCommandStates();
             }
             catch (Exception ex)

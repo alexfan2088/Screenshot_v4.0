@@ -135,18 +135,26 @@
             VerticalAlignment="Center"
             HorizontalAlignment="Right"
             Margin="72,0,0,0">
-        <StackPanel Orientation="Horizontal" Spacing="6">
+        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsRecording}">
           <TextBlock Text="屏幕变化率:" Foreground="#EAF7F1" FontSize="12" />
           <TextBlock Text="{Binding CurrentChangeRateText}" Foreground="#FFD54F" FontSize="12" Width="70" TextAlignment="Right" />
           <TextBlock Text="截图数量:" Foreground="#EAF7F1" FontSize="12" />
           <TextBlock Text="{Binding CaptureCountText}" Foreground="#FFD54F" FontSize="12" Width="50" TextAlignment="Right" />
           <TextBlock Text="剩余:" Foreground="#EAF7F1" FontSize="12" />
           <TextBlock Text="{Binding RemainingTimeText}" Foreground="#FFD54F" FontSize="12" Width="90" TextAlignment="Right" />
-        </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
           <TextBlock Text="下次检查:" Foreground="#EAF7F1" FontSize="12" />
           <TextBlock Text="{Binding NextCheckSecondsText}" Foreground="#FFD54F" FontSize="12" Width="70" TextAlignment="Right" />
         </StackPanel>
+
+        <TextBlock Grid.ColumnSpan="2"
+                   IsVisible="{Binding IsEditingUnlocked}"
+                   Text="{Binding StatusBarText}"
+                   Foreground="#FFD54F"
+                   FontSize="12"
+                   TextTrimming="CharacterEllipsis"
+                   TextWrapping="NoWrap"
+                   HorizontalAlignment="Right" />
+
       </Grid>
     </Grid>
   </Border>
