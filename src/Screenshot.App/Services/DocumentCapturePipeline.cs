@@ -99,6 +99,32 @@ namespace Screenshot.App.Services
             }
         }
 
+
+        public async Task UpdateCaptureParamsAsync(double screenChangeRate, int screenshotIntervalSeconds, CancellationToken cancellationToken)
+        {
+            // Allow live updates while recording.
+            await _captureLock.WaitAsync(cancellationToken);
+            try
+            {
+                _config.ScreenChangeRate = screenChangeRate;
+
+                if (_config.ScreenshotInterval != screenshotIntervalSeconds)
+                {
+                    _config.ScreenshotInterval = screenshotIntervalSeconds;
+                    // Reset next interval to take effect quickly and predictably.
+                    _nextIntervalAtUtc = DateTime.UtcNow.AddSeconds(Math.Max(1, _config.ScreenshotInterval));
+                }
+                else
+                {
+                    _config.ScreenshotInterval = screenshotIntervalSeconds;
+                }
+            }
+            finally
+            {
+                _captureLock.Release();
+            }
+        }
+
         private async Task CaptureOnceAsync(CancellationToken cancellationToken)
         {
             if (!await _captureLock.WaitAsync(0, cancellationToken))

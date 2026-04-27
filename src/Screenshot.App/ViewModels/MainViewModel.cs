@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Threading;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Avalonia.Threading;
@@ -74,6 +75,7 @@ namespace Screenshot.App.ViewModels
         private string _settingsPathDisplay;
         private DateTime? _autoStopAtUtc;
         private bool _stopInProgress;
+        private CancellationTokenSource? _liveSettingsDebounceCts;
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -928,6 +930,54 @@ namespace Screenshot.App.ViewModels
             }
             return 0;
         }
+        private void ScheduleLiveSettingsApply()
+        {
+            if (!_isRecording || _stopInProgress) return;
+
+            _liveSettingsDebounceCts?.Cancel();
+            _liveSettingsDebounceCts?.Dispose();
+            _liveSettingsDebounceCts = new CancellationTokenSource();
+            var token = _liveSettingsDebounceCts.Token;
+
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    await System.Threading.Tasks.Task.Delay(3000, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                // Apply on UI thread (ViewModel + pipeline are UI-owned).
+                await Dispatcher.UIThread.InvokeAsync(async () =>
+                {
+                    await ApplyLiveSettingsAsync();
+                });
+            }, token);
+        }
+
+        private async System.Threading.Tasks.Task ApplyLiveSettingsAsync()
+        {
+            if (!_isRecording || _stopInProgress) return;
+
+            try
+            {
+                // Duration: re-schedule from now (matches current countdown reset behavior).
+                StartAutoStopTimer();
+
+                if (_docPipeline != null)
+                {
+                    await _docPipeline.UpdateCaptureParamsAsync(ParseScreenChangeRate(), ParseIntervalSeconds(), System.Threading.CancellationToken.None);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.WriteError("Apply live settings failed", ex);
+            }
+        }
+
         private void StartAutoStopTimer()
         {
             var minutes = ParseInt(RecordingDurationMinutes);
