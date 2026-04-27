@@ -152,14 +152,28 @@ if (_stopInProgress)
         {
             var list = new System.Collections.Generic.List<string>();
 
-            if (!string.IsNullOrWhiteSpace(LastVideoPath)) list.Add("mp4");
-            if (!string.IsNullOrWhiteSpace(LastAudioPath)) list.Add("wav");
-            if (!string.IsNullOrWhiteSpace(LastPptPath)) list.Add("pptx");
+            static bool Exists(string? path)
+                => !string.IsNullOrWhiteSpace(path) && System.IO.File.Exists(path);
 
-            // Only claim jpg when user chooses to keep them.
-            if (KeepJpgFiles && _captureCount > 0)
+            if (Exists(LastVideoPath)) list.Add("mp4");
+            if (Exists(LastAudioPath)) list.Add("wav");
+            if (Exists(LastPptPath)) list.Add("pptx");
+
+            // Only claim jpg when user chooses to keep them AND at least one jpg exists in the session folder.
+            if (KeepJpgFiles && !string.IsNullOrWhiteSpace(LastSessionDirectory) && Directory.Exists(LastSessionDirectory))
             {
-                list.Add("jpg");
+                try
+                {
+                    using var e = Directory.EnumerateFiles(LastSessionDirectory, "*.jpg").GetEnumerator();
+                    if (e.MoveNext())
+                    {
+                        list.Add("jpg");
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
             }
 
             return list.Count == 0 ? "文件" : string.Join(",", list);
@@ -427,7 +441,7 @@ if (_stopInProgress)
         }
 
         public string CurrentChangeRateText => $"{Clamp(_currentChangeRate, 0, 99.99):0.00}%";
-        public string CaptureCountText => $"{Clamp(_captureCount, 0, 9999)}";
+        public string CaptureCountText => KeepJpgFiles ? $"{Clamp(_captureCount, 0, 9999)}" : "0";
         public string RemainingTimeText => _remainingTimeText;
         public string NextCheckSecondsText
             => _nextCheckSeconds <= 0 ? "0秒后" : $"{Clamp(_nextCheckSeconds, 1, 9999)}秒后";
@@ -1115,6 +1129,7 @@ if (_stopInProgress)
             if (name == nameof(KeepJpgFiles))
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeepJpgLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CaptureCountText)));
             }
             if (name == nameof(LogEnabled))
             {
