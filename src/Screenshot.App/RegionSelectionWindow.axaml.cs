@@ -47,21 +47,20 @@ namespace Screenshot.App
             var current = e.GetPosition(this);
             if (_start == null) return;
             UpdateSelection(_start.Value, current);
-        }
-
-        private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
+        }        private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
         {
             if (_start == null) return;
             var end = e.GetPosition(this);
             var rect = BuildRect(_start.Value, end);
             rect = ClampRect(rect);
+            _currentRect = rect;
             _hasRect = rect.Width > 0 && rect.Height > 0;
             _start = null;
-            _tcs.TrySetResult(_hasRect ? rect : null);
-            Close();
-        }
 
-        private void OnKeyDown(object? sender, KeyEventArgs e)
+            // Keep the window open for keyboard fine-tuning.
+            // Confirm with Enter, cancel with Esc.
+            Focus();
+        }        private void OnKeyDown(object? sender, KeyEventArgs e)
         {
             if (e.Key == Key.Escape)
             {
@@ -69,18 +68,58 @@ namespace Screenshot.App
                 Close();
                 return;
             }
+
             if (e.Key == Key.Enter && _hasRect)
             {
                 _tcs.TrySetResult(_currentRect);
                 Close();
                 return;
             }
+
             if (!_hasRect) return;
 
-            var step = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 10 : 1;
+            var mods = e.KeyModifiers;
+            var cmdOpt = mods.HasFlag(KeyModifiers.Meta) && mods.HasFlag(KeyModifiers.Alt);
+
+            // Step size: default 1px. (Optional) hold Ctrl for 10px.
+            var step = mods.HasFlag(KeyModifiers.Control) ? 10 : 1;
+
             var rect = _currentRect;
 
-            if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            // Preferred mac shortcuts:
+            // - ⌘⌥ + Arrow: move region
+            // - ⌘⌥⇧ + Arrow: resize region
+            var resize = cmdOpt && mods.HasFlag(KeyModifiers.Shift);
+            var move = cmdOpt && !mods.HasFlag(KeyModifiers.Shift);
+
+            // Backward-compatible shortcut:
+            // - Ctrl + Arrow: resize region (old behavior)
+            if (!cmdOpt && mods.HasFlag(KeyModifiers.Control) && (e.Key is Key.Left or Key.Right or Key.Up or Key.Down))
+            {
+                resize = true;
+                // Keep legacy step behavior: Shift makes it 10px.
+                step = mods.HasFlag(KeyModifiers.Shift) ? 10 : 1;
+            }
+
+            if (move)
+            {
+                switch (e.Key)
+                {
+                    case Key.Left:
+                        rect = rect.WithX(rect.X - step);
+                        break;
+                    case Key.Right:
+                        rect = rect.WithX(rect.X + step);
+                        break;
+                    case Key.Up:
+                        rect = rect.WithY(rect.Y - step);
+                        break;
+                    case Key.Down:
+                        rect = rect.WithY(rect.Y + step);
+                        break;
+                }
+            }
+            else if (resize)
             {
                 switch (e.Key)
                 {
@@ -100,25 +139,14 @@ namespace Screenshot.App
             }
             else
             {
-                switch (e.Key)
-                {
-                    case Key.Left:
-                        rect = rect.WithX(rect.X - step);
-                        break;
-                    case Key.Right:
-                        rect = rect.WithX(rect.X + step);
-                        break;
-                    case Key.Up:
-                        rect = rect.WithY(rect.Y - step);
-                        break;
-                    case Key.Down:
-                        rect = rect.WithY(rect.Y + step);
-                        break;
-                }
+                // Ignore other keys
+                return;
             }
 
             _currentRect = ClampRect(rect);
-            UpdateSelection(new Point(_currentRect.X, _currentRect.Y), new Point(_currentRect.X + _currentRect.Width, _currentRect.Y + _currentRect.Height));
+            UpdateSelection(
+                new Point(_currentRect.X, _currentRect.Y),
+                new Point(_currentRect.X + _currentRect.Width, _currentRect.Y + _currentRect.Height));
         }
 
 

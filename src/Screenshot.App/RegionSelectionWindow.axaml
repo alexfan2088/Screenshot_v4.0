@@ -8,11 +8,25 @@
         ExtendClientAreaTitleBarHeightHint="-1"
         CanResize="False"
         Topmost="True">
-  <Canvas Name="SelectionCanvas">
-    <Border Name="SelectionBorder"
-            BorderBrush="#FF3B30"
-            BorderThickness="2"
-            Background="#30FFFFFF"
-            IsVisible="False" />
-  </Canvas>
+  <Grid>
+    <Canvas Name="SelectionCanvas">
+      <Border Name="SelectionBorder"
+              BorderBrush="#FF3B30"
+              BorderThickness="2"
+              Background="#30FFFFFF"
+              IsVisible="False" />
+    </Canvas>
+
+    <!-- Instructions overlay -->
+    <Border Background="#CC000000"
+            CornerRadius="6"
+            Padding="10,6"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="0,18,0,0"
+            IsHitTestVisible="False">
+      <TextBlock Foreground="#FFFFFF" FontSize="14"
+                 Text="拖拽选择区域；Enter 确认，Esc 取消。⌘⌥←→↑↓ 移动区域；⌘⌥⇧←→↑↓ 调整区域大小。" />
+    </Border>
+  </Grid>
 </Window>
