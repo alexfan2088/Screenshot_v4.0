@@ -157,11 +157,20 @@ namespace Screenshot.App.Services
                 }
 
                 if (shouldCapture)
-                {
-                    var fileName = $"{_baseName}_{_captureIndex:D5}.jpg";
+                {                    var ts = DateTime.Now.ToString("yyyyMMddHHmmssfff");
+                    var fileName = $"{ts}.jpg";
                     var imagePath = Path.Combine(_outputDir, fileName);
-                    _captureIndex++;
 
+                    // If multiple captures land in the same millisecond, avoid collisions by suffixing _1, _2, ...
+                    var suffix = 1;
+                    while (File.Exists(imagePath))
+                    {
+                        fileName = $"{ts}_{suffix}.jpg";
+                        imagePath = Path.Combine(_outputDir, fileName);
+                        suffix++;
+                    }
+
+                    _captureIndex++;
                     if (File.Exists(imagePath))
                     {
                         File.Delete(imagePath);
