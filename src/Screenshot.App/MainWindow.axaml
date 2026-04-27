@@ -75,21 +75,55 @@
           </MenuItem>
         </Menu>
 
-        <Button Content="开始" Command="{Binding StartCommand}" Background="#1E8E5A" Foreground="#FFFFFF" Padding="8,1" FontSize="12" ToolTip.Tip="开始录制（输出内容取决于当前设置：音频/视频/截图/PPT）" />
-        <Button Content="停止" Command="{Binding StopCommand}" Background="#B33B3B" Foreground="#FFFFFF" Padding="8,1" FontSize="12" ToolTip.Tip="停止录制并生成本次会话文件" />
-        <Button Content="选择" Click="OnSelectRegionClick" IsEnabled="{Binding IsRegionSelectionEnabled}" Padding="6,1" FontSize="12" ToolTip.Tip="选择录制区域：拖拽框选。快捷键：⌘⌥←→↑↓ 移动区域；⌘⌥⇧←→↑↓ 调整区域大小；Enter 确认；Esc 取消" />
-        <Button Content="恢复" Command="{Binding ResetSettingsCommand}" IsEnabled="{Binding IsRegionSelectionEnabled}" Padding="6,1" FontSize="12" ToolTip.Tip="恢复上一次保存的区域/参数（仅在未录制状态可用）" />
+        <Button Content="开始" Command="{Binding StartCommand}" Background="#1E8E5A" Foreground="#FFFFFF" Padding="8,1" FontSize="12" />
+        <Button Content="停止" Command="{Binding StopCommand}" Background="#B33B3B" Foreground="#FFFFFF" Padding="8,1" FontSize="12" />
+        <Button Content="选择" Click="OnSelectRegionClick" IsEnabled="{Binding IsRegionSelectionEnabled}" Padding="6,1" FontSize="12" />
+        <Button Content="恢复" Command="{Binding ResetSettingsCommand}" IsEnabled="{Binding IsRegionSelectionEnabled}" Padding="6,1" FontSize="12" />
+        <Button Content="?" Padding="6,1" FontSize="12" Background="#2B2B2B" Foreground="#FFFFFF" BorderBrush="#000000" BorderThickness="0" MinWidth="22">
+          <Button.Flyout>
+            <Flyout Placement="Bottom">
+              <Border Padding="12" MaxWidth="520">
+                <StackPanel Spacing="10">
+                  <TextBlock Text="使用说明 / 快捷键" FontSize="14" FontWeight="Bold" />
+
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="区域选择（点击“选择”进入）：" FontWeight="Bold" />
+                    <TextBlock Text="• 拖拽框选区域" />
+                    <TextBlock Text="• Enter 确认，Esc 取消" />
+                    <TextBlock Text="• ⌘⌥ ←/→/↑/↓：移动区域" />
+                    <TextBlock Text="• ⌘⌥⇧ ←/→/↑/↓：调整区域大小" />
+                  </StackPanel>
+
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="参数含义：" FontWeight="Bold" />
+                    <TextBlock Text="• 变化率（%）：低于阈值时会倾向跳过截图" />
+                    <TextBlock Text="• 间隔（秒）：每隔多少秒检查一次屏幕变化" />
+                    <TextBlock Text="• 时长（分钟）：到点后自动停止；填 0 表示不自动停止" />
+                  </StackPanel>
+
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="常用操作：" FontWeight="Bold" />
+                    <TextBlock Text="• 开始：开始录制" />
+                    <TextBlock Text="• 停止：停止录制并生成本次会话文件" />
+                    <TextBlock Text="• 恢复：恢复上一次保存的区域/参数（未录制状态可用）" />
+                  </StackPanel>
+
+                </StackPanel>
+              </Border>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
 
         <TextBlock Text="变化率:" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
-        <TextBox x:Name="ScreenChangeRateBox" Width="22" Height="18" MinHeight="0" Text="{Binding ScreenChangeRate}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden" ToolTip.Tip="屏幕变化率阈值（%）：变化小于该值时会倾向于跳过截图" />
+        <TextBox x:Name="ScreenChangeRateBox" Width="22" Height="18" MinHeight="0" Text="{Binding ScreenChangeRate}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden" />
         <TextBlock Text="%" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
 
         <TextBlock Text="间隔:" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
-        <TextBox x:Name="ScreenshotIntervalBox" Width="18" Height="18" MinHeight="0" Text="{Binding ScreenshotInterval}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden" ToolTip.Tip="截图检查间隔（秒）：每隔多少秒检查一次屏幕并决定是否截图" />
+        <TextBox x:Name="ScreenshotIntervalBox" Width="18" Height="18" MinHeight="0" Text="{Binding ScreenshotInterval}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden" />
         <TextBlock Text="秒" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
 
         <TextBlock Text="时长:" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
-        <TextBox x:Name="RecordingDurationBox" Width="18" Height="18" MinHeight="0" Text="{Binding RecordingDurationMinutes}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden" ToolTip.Tip="录制时长（分钟）：到点后自动停止；填写 0 表示不自动停止" />
+        <TextBox x:Name="RecordingDurationBox" Width="18" Height="18" MinHeight="0" Text="{Binding RecordingDurationMinutes}" IsEnabled="{Binding IsEditingUnlocked}" FontSize="12" TextAlignment="Right" VerticalContentAlignment="Center" Padding="4,0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.VerticalScrollBarVisibility="Hidden" />
         <TextBlock Text="分钟" Foreground="#EAF7F1" VerticalAlignment="Center" FontSize="12" />
 
       </StackPanel>
